@@ -22,7 +22,27 @@ in the same sentence. Keep it that way when you ad-lib. A cheat-sheet is at the 
 
 ---
 
-## Cut A — submission (≈4:15)
+## Cut S — 2:30 version (recommended)
+
+Same beats as Cut A, narration cut to ~370 words. Record s2 then s3 in one session.
+
+| Time | Screen | Narration |
+|---|---|---|
+| 0:00 | Idle console, title card | Network alarm systems fire thousands of times a day, and every alarm only says "someone tried" — not whether they got in. Today a human analyst spends up to forty-five minutes per alarm finding that out. SOCrates does it itself. |
+| 0:15 | Run the Log4Shell alert; GOAL line | One alarm: an attempt to break into server app02 through a known bug in a logging library. The agent's goal: did it succeed, respond safely, prove the response worked. |
+| 0:25 | Trace: alert → flow → asset → CVE → playbook → logs; ledger E1–E8 | It picks each next step from what it just learned. The request was accepted — "200 OK". The server runs a version of the library that has the bug — confirmed against a vulnerability database. The playbook says a real break-in leaves two traces: the server calling out to the attacker, and a command shell being launched. It searches the logs for exactly those — and finds both. Every clue is filed as numbered evidence. |
+| 0:55 | SUCCEEDED; guardrail lines; Blocked 203.0.113.66 | Verdict: succeeded, 95 percent confidence. Before it acts, safety rules — plain code, not AI — check the claim: is there real break-in evidence? Yes. Is confidence high and the address not on the trusted list? Yes. Only then does it block the attacker in the firewall — the network's gatekeeper. |
+| 1:15 | VERIFY finds new alert; ADAPT pivot; Approve isolation | It doesn't trust its own action. It re-checks the network: the block holds — but a new alarm just hit the same server from a different address. The attacker switched machines, so the agent reopens the case. It also wants to cut the server off the network — a drastic step, so it stops and asks a human. I approve. |
+| 1:40 | Second block, FINAL, stats | It finds the same traces for the new address, blocks it, verifies again, and closes: eleven decisions, two blocks, every action double-checked, every claim tied to evidence. |
+| 1:55 | s3: ERROR → ADAPT unavailable → recovered → Approve → ticket | Now a failure. A password-guessing attack on a critical server — and mid-investigation the log service goes down. Three tries fail; the agent says so, lowers its confidence, keeps going with what it can reach, and never guesses. When the service returns it finds the proof: one password accepted. The block waits for a human because the server is critical, and it files a ticket: reset that account. |
+| 2:20 | Chat "why did you block this?"; end card | Safety rules outside the AI, self-checks after every action, a human on the big calls. Team Galaxy Flare — SOCrates. |
+
+Optional 10-second live tag before the close, if under time: *"And the same agent runs on this laptop's real
+logs — it just investigated a genuine antivirus alert and correctly called it a failed attack."*
+
+---
+
+## Cut A — full-length version (≈4:15)
 
 ### 0:00 – 0:25 · Hook
 **Screen:** idle console. Title card: *SOCrates — an AI agent that finds out whether a cyber-attack actually worked.*
