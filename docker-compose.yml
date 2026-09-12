@@ -1,0 +1,17 @@
+services:
+  sandbox:
+    build: .
+    command: uvicorn sandbox.app:app --host 0.0.0.0 --port 8001
+    environment:
+      - SCENARIO=s2
+    ports:
+      - "8001:8001"
+  # Run an investigation against the sandbox service (one-shot):
+  #   docker compose run --rm agent
+  agent:
+    build: .
+    command: python -m agent.cli run --scenario s2 --auto-approve --sandbox-url http://sandbox:8001
+    env_file: .env
+    depends_on:
+      - sandbox
+    profiles: ["cli"]

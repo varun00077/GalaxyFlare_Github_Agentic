@@ -1,0 +1,70 @@
+[
+  {
+    "hostname": "web01",
+    "ips": ["10.20.0.11"],
+    "os": "Ubuntu 22.04 LTS",
+    "services": [
+      {"product": "nginx", "version": "1.24.0", "port": 443},
+      {"product": "shopfront", "version": "5.2.1", "port": 443}
+    ],
+    "criticality": "high",
+    "owner": "ecommerce-platform",
+    "internet_facing": true,
+    "patch_date": "2026-08-30",
+    "controls": {"waf": "modsecurity (blocking mode)", "edr": "installed"}
+  },
+  {
+    "hostname": "app02",
+    "ips": ["10.20.0.22"],
+    "os": "RHEL 8.8",
+    "services": [
+      {"product": "apache-tomcat", "version": "9.0.50", "port": 8080},
+      {"product": "log4j-core", "version": "2.14.1", "port": null}
+    ],
+    "criticality": "high",
+    "owner": "order-services",
+    "internet_facing": true,
+    "patch_date": "2026-05-12",
+    "controls": {"waf": "none", "edr": "installed", "egress_filtering": "none"}
+  },
+  {
+    "hostname": "bastion01",
+    "ips": ["10.20.0.5"],
+    "os": "Ubuntu 22.04 LTS",
+    "services": [
+      {"product": "openssh-server", "version": "8.9p1", "port": 22}
+    ],
+    "criticality": "critical",
+    "owner": "platform-infra",
+    "internet_facing": true,
+    "patch_date": "2026-09-01",
+    "controls": {"waf": "n/a", "edr": "installed", "fail2ban": "disabled (maintenance window)"}
+  },
+  {
+    "hostname": "files03",
+    "ips": ["10.20.0.33"],
+    "os": "Debian 11",
+    "services": [
+      {"product": "apache-httpd", "version": "2.4.50", "port": 80}
+    ],
+    "criticality": "medium",
+    "owner": "docs-team",
+    "internet_facing": true,
+    "patch_date": "2026-07-14",
+    "controls": {"waf": "none", "edr": "installed"}
+  },
+  {
+    "hostname": "upload04",
+    "ips": ["10.20.0.44"],
+    "os": "Ubuntu 20.04 LTS",
+    "services": [
+      {"product": "docshare", "version": "3.1.4", "port": 443},
+      {"product": "php-fpm", "version": "7.4.33", "port": null}
+    ],
+    "criticality": "high",
+    "owner": "hr-systems",
+    "internet_facing": true,
+    "patch_date": "2026-06-02",
+    "controls": {"waf": "none", "edr": "installed"}
+  }
+]

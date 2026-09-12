@@ -1,0 +1,68 @@
+[
+  {
+    "id": "pb-sqli",
+    "title": "Web application SQL injection attempt",
+    "tags": ["sql injection", "sqli", "union select", "web_server", "web application attack"],
+    "text": "Alerts from ET WEB_SERVER SQL Injection signatures fire on the request, not on the outcome. Decide success by checking (1) whether the application version is affected by a known SQLi CVE, (2) the HTTP response code in the flow and web access log - a 403 or a WAF BLOCK event means the payload never reached the database, (3) the database query log for UNION/OR 1=1 statements that returned rows. A 200 response with an unusually large body plus matching DB rows is a confirmed success. Failed attempts from scanners (sqlmap user-agent) get a watch-list entry, not a block.",
+    "evidence_plan": [
+      {"source": "web", "pattern": "search\\?q=|UNION|action=BLOCK|403"},
+      {"source": "db", "pattern": "UNION|OR 1=1|rows="}
+    ]
+  },
+  {
+    "id": "pb-log4j",
+    "title": "Log4Shell / JNDI injection (CVE-2021-44228)",
+    "tags": ["log4j", "jndi", "ldap", "rce", "exploit", "attempted administrator privilege gain"],
+    "text": "The exploit string ${jndi:ldap://...} is trivial to send; success requires log4j-core < 2.15.0 and an outbound LDAP/RMI connection from the victim to the attacker. Evidence of success, in order of strength: (1) outbound connection log from the host to the attacker IP on 1389/389/1099, (2) java spawning a shell in the process log, (3) JndiLookup entries in the application log. If the asset is patched or egress is filtered and none of these appear, the attempt failed. Because the exploit gives code execution, a confirmed success justifies blocking the source IP immediately and proposing host isolation; expect the attacker to return from a different IP.",
+    "evidence_plan": [
+      {"source": "outbound", "pattern": "dst="},
+      {"source": "process", "pattern": "spawned child"},
+      {"source": "app", "pattern": "jndi"}
+    ]
+  },
+  {
+    "id": "pb-ssh-bruteforce",
+    "title": "SSH brute force / credential guessing",
+    "tags": ["ssh", "brute force", "scan", "credential", "authentication", "potential ssh scan"],
+    "text": "Volume of failed logins alone is not compromise. Success is an 'Accepted password' or 'Accepted publickey' line for the same source IP after the failure burst, followed by a session open. Then check the process log for shells spawned under the compromised account and the outbound log for reverse-shell connections. If access was gained: block the source, escalate for a credential reset of the account, and note the account name. If fail2ban or lockout stopped the burst, the attempt failed.",
+    "evidence_plan": [
+      {"source": "auth", "pattern": "Accepted|session opened|Failed password"},
+      {"source": "process", "pattern": "spawned child"},
+      {"source": "outbound", "pattern": "dst="}
+    ]
+  },
+  {
+    "id": "pb-path-traversal",
+    "title": "Apache HTTP Server path traversal (CVE-2021-41773 / CVE-2021-42013)",
+    "tags": ["path traversal", "apache", "httpd", "cgi-bin", "directory traversal", "2.4.49", "2.4.50"],
+    "text": "Traversal payloads use encoded dot segments (%2e%2e/ or the double-encoded .%%32%65). Success means the server answered 200 with file content (for example /etc/passwd, ~1.9 KB) or executed a cgi-bin script. Note the fix in 2.4.50 was incomplete (CVE-2021-42013); consult the advisory KB for the current affected version list before concluding a host is unaffected. Also check the process log for httpd spawning shells.",
+    "evidence_plan": [
+      {"source": "web", "pattern": "%2e%2e|%%32%65|cgi-bin"},
+      {"source": "process", "pattern": "spawned child"}
+    ]
+  },
+  {
+    "id": "pb-webshell-upload",
+    "title": "Web shell upload via file upload endpoint",
+    "tags": ["file upload", "web shell", "php", "upload", "docshare"],
+    "text": "An upload alert is only an attempt. Success requires (1) the upload endpoint returning 201/200 for a script file (.php, .jsp, .aspx), (2) a subsequent GET of the uploaded path, often with a cmd= parameter, answered 200, (3) the web worker spawning a shell. Confirmed web shells give persistent access: block the source, escalate for file removal, and check whether the source is an authorised penetration test before treating it as hostile.",
+    "evidence_plan": [
+      {"source": "web", "pattern": "POST /upload|/uploads/"},
+      {"source": "process", "pattern": "spawned child"}
+    ]
+  },
+  {
+    "id": "pb-unknown-asset",
+    "title": "Alert against a host that is not in the asset inventory",
+    "tags": ["unknown asset", "not in inventory", "decommissioned", "shadow it", "asset record missing"],
+    "text": "Without an asset record there is no software version to test against the CVE KB and no host logs to search, so the attack outcome cannot be established. Do not block on the alert label alone. Record what is known (flow metadata, response status), escalate to the asset owner team to identify the host, and list the evidence that would resolve the case: asset record, host logs, and the service version.",
+    "evidence_plan": []
+  },
+  {
+    "id": "pb-response-policy",
+    "title": "Response policy: when to block, isolate, or escalate",
+    "tags": ["response", "block", "isolate", "escalate", "policy", "allowlist", "pentest"],
+    "text": "Block a source IP only when the attack succeeded or is in progress with confidence at or above 0.7 and the source is not on the allow-list. Host isolation and any action touching a critical asset need analyst approval. Failed attempts go to the watch-list. Inconclusive cases are escalated with the missing evidence named. After any block, verify the rule exists and that no new flows arrive from the source; a new alert against the same host from a different IP usually means the attacker pivoted. Analyst overrides win: if a source is declared an authorised test, unblock, record the exception, and revise the assessment.",
+    "evidence_plan": []
+  }
+]

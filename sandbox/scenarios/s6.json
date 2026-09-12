@@ -1,0 +1,153 @@
+{
+  "id": "s6",
+  "name": "Path traversal on Apache 2.4.50: verdict flips when the advisory is revised",
+  "description": "files03 runs Apache httpd 2.4.50. The KB initially lists only CVE-2021-41773 (2.4.49), so the agent concludes FAILED and files the assessment. Then two things change: the advisory KB is revised with CVE-2021-42013 (the incomplete fix: 2.4.49 and 2.4.50), and the attacker's second stage (cgi-bin RCE) lands in the logs. The agent must reopen the incident, re-check vulnerability, hunt the success indicators, and revise to SUCCEEDED with a block. Final: SUCCEEDED, block 198.51.100.200.",
+  "expected": {
+    "verdict": "SUCCEEDED",
+    "blocked_ips": [
+      "198.51.100.200"
+    ],
+    "escalated": false,
+    "unsafe_block_ips": [],
+    "assessment_sequence": [
+      "FAILED",
+      "SUCCEEDED"
+    ]
+  },
+  "alerts": [
+    {
+      "alert_id": "alt-6001",
+      "timestamp": "2026-09-10T16:44:30.129Z",
+      "event_type": "alert",
+      "flow_id": 445120981,
+      "src_ip": "198.51.100.200",
+      "src_port": 55012,
+      "dest_ip": "10.20.0.33",
+      "dest_port": 80,
+      "proto": "TCP",
+      "app_proto": "http",
+      "alert": {
+        "signature": "ET WEB_SERVER Apache 2.4.49 Path Traversal (CVE-2021-41773)",
+        "signature_id": 2034195,
+        "category": "Web Application Attack",
+        "severity": 1
+      }
+    }
+  ],
+  "flows": {
+    "445120981": {
+      "flow_id": 445120981,
+      "src_ip": "198.51.100.200",
+      "dest_ip": "10.20.0.33",
+      "dest_port": 80,
+      "proto": "TCP",
+      "bytes_toserver": 388,
+      "bytes_toclient": 2107,
+      "pkts": 9,
+      "duration_ms": 58,
+      "http": {
+        "method": "GET",
+        "hostname": "files.orbital-retail.example",
+        "url": "/cgi-bin/.%%32%65/.%%32%65/.%%32%65/.%%32%65/etc/passwd",
+        "user_agent": "curl/8.5.0",
+        "status": 200,
+        "length": 1893
+      },
+      "payload_printable": "GET /cgi-bin/.%%32%65/.%%32%65/.%%32%65/.%%32%65/etc/passwd HTTP/1.1"
+    }
+  },
+  "logs": {
+    "files03": {
+      "web": [
+        {
+          "ts": "2026-09-10T16:44:11Z",
+          "line": "172.16.2.14 - - [10/Sep/2026:16:44:11 +0000] \"GET /docs/onboarding.pdf HTTP/1.1\" 200 402113 \"-\" \"Mozilla/5.0 (Macintosh)\""
+        },
+        {
+          "ts": "2026-09-10T16:44:30Z",
+          "line": "198.51.100.200 - - [10/Sep/2026:16:44:30 +0000] \"GET /cgi-bin/.%%32%65/.%%32%65/.%%32%65/.%%32%65/etc/passwd HTTP/1.1\" 200 1893 \"-\" \"curl/8.5.0\""
+        }
+      ],
+      "process": [],
+      "auth": [],
+      "outbound": [
+        {
+          "ts": "2026-09-10T16:40:00Z",
+          "line": "2026-09-10T16:40:00.000Z host=files03 conn out src=10.20.0.33:39000 dst=10.20.0.70:445 proto=tcp bytes_out=8100 bytes_in=120044 state=ESTABLISHED"
+        }
+      ]
+    }
+  },
+  "allowlist": [],
+  "faults": {},
+  "triggers": [
+    {
+      "on": "file_assessment",
+      "verdict": "FAILED",
+      "do": [
+        {
+          "cve_upsert": {
+            "id": "CVE-2021-42013",
+            "title": "Path traversal and RCE in Apache HTTP Server 2.4.49 and 2.4.50 (incomplete fix for CVE-2021-41773)",
+            "product": "apache-httpd",
+            "affected_versions": [
+              "2.4.49",
+              "2.4.50"
+            ],
+            "cvss": 9.8,
+            "prerequisites": "Same as CVE-2021-41773; the 2.4.50 fix did not cover double-encoded dot segments (.%%32%65).",
+            "success_indicators": [
+              {
+                "source": "web",
+                "pattern": "%%32%65.* 200 ",
+                "meaning": "double-encoded traversal answered 200"
+              },
+              {
+                "source": "web",
+                "pattern": "/cgi-bin/.* 200 [1-9][0-9]{2,}",
+                "meaning": "cgi-bin request executed and returned content"
+              },
+              {
+                "source": "process",
+                "pattern": "proc=(apache2|httpd) .*spawned child",
+                "meaning": "httpd spawned a process"
+              }
+            ],
+            "failure_indicators": [
+              {
+                "source": "web",
+                "pattern": "%%32%65.* (400|403|404) ",
+                "meaning": "traversal request rejected"
+              }
+            ]
+          }
+        },
+        {
+          "add_logs": {
+            "host": "files03",
+            "web": [
+              {
+                "ts": "2026-09-10T16:45:02Z",
+                "line": "198.51.100.200 - - [10/Sep/2026:16:45:02 +0000] \"POST /cgi-bin/.%%32%65/.%%32%65/.%%32%65/.%%32%65/bin/sh HTTP/1.1\" 200 141 \"-\" \"curl/8.5.0\""
+              }
+            ],
+            "process": [
+              {
+                "ts": "2026-09-10T16:45:02Z",
+                "line": "2026-09-10T16:45:02.377Z host=files03 proc=apache2 pid=1422 user=www-data spawned child=/bin/sh args=\"-c echo Content-Type: text/plain; echo; id; uname -a\""
+              }
+            ]
+          }
+        },
+        {
+          "emit_event": {
+            "type": "kb_update",
+            "cve": "CVE-2021-42013",
+            "product": "apache-httpd",
+            "note": "Advisory KB revised: CVE-2021-42013 added. Apache httpd 2.4.50 is now listed as affected (incomplete fix for CVE-2021-41773). Re-evaluate any assessment that relied on 2.4.50 being unaffected."
+          }
+        }
+      ]
+    }
+  ]
+}
