@@ -25,6 +25,7 @@
   --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html { background: var(--bg); }
 body {
   margin: 0; min-height: 100vh; overflow-x: hidden; color: var(--ink);
@@ -145,9 +146,9 @@ button, input, select { font: inherit; color: inherit; }
 .hero-verdict.working { color: var(--ink); }
 .hero-verdict.working::after { content: "_"; color: var(--accent); animation: blink .9s steps(1) infinite; }
 .hero-summary { margin: 0; max-width: 64ch; font-family: var(--serif); font-style: italic; font-size: 20px; line-height: 1.35; color: var(--ink-2); }
-.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px 12px; margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); }
 .stat { display: flex; align-items: flex-start; gap: 10px; }
-.stat .num { font-weight: 700; font-size: 40px; line-height: 1; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
+.stat .num { font-weight: 700; font-size: clamp(30px, 2.6vw, 40px); line-height: 1; letter-spacing: -.04em; font-variant-numeric: tabular-nums; flex: none; }
 .stat .cap { font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); line-height: 1.35; padding-top: 4px; }
 .hero-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .chip {

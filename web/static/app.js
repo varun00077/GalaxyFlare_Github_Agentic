@@ -110,7 +110,7 @@
     if (source) source.close();
     source = null; incidentId = null; seen = new Set(); evidenceCount = 0;
     $("trace").innerHTML = ""; $("evidence").innerHTML = ""; $("chat-log").innerHTML = "";
-    $("incident-id").textContent = "none"; setStatus("idle"); setStats({ steps: 0, budget: null, evidence: [], actions: [], verdict: null });
+    $("incident-id").textContent = "none"; setStatus("idle"); setStats({ steps: 0, budget: null, evidence: [], actions: [], verdict: null, llm_usage: {} });
     $("approval").hidden = true; $("chat-input").disabled = true; $("chat-send").disabled = true;
   }
 
@@ -232,6 +232,10 @@
     $("st-evidence").textContent = (inc.evidence || []).length;
     $("st-actions").textContent = (inc.actions || []).filter((a) => a.type !== "watchlist").length;
     $("st-conf").textContent = inc.verdict && inc.verdict.confidence != null ? Number(inc.verdict.confidence).toFixed(2) : "—";
+    const u = inc.llm_usage || {};
+    $("st-calls").textContent = u.calls ?? 0;
+    const tok = (u.prompt || 0) + (u.output || 0);
+    $("st-tokens").textContent = tok ? `${tok >= 1000 ? (tok / 1000).toFixed(1) + "k" : tok} tokens${u.model_switches ? ` · ${u.model_switches} switches` : ""}` : "0 tokens";
   }
   function resetHero(k, v, s) { $("hero-kicker").textContent = k; $("hero-right").textContent = ""; $("hero-verdict").textContent = v; $("hero-verdict").className = "hero-verdict"; $("hero-summary").textContent = s; $("hero-chips").innerHTML = ""; }
 
