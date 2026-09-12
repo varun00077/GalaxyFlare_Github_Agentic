@@ -15,3 +15,4 @@ node_modules/
 .claude/
 eval/traces/
 eval/results_*.json
+data/live/
