@@ -14,6 +14,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -122,10 +123,56 @@ def index() -> FileResponse:
     return FileResponse(STATIC / "index.html")
 
 
+def _meta() -> dict[str, Any]:
+    key = settings.gemini_api_key
+    return {"planner": session.provider, "model": settings.gemini_model if session.provider == "gemini" else "scripted",
+            "gemini_model": settings.gemini_model, "has_key": bool(key), "key_hint": f"...{key[-4:]}" if key else "",
+            "sandbox": settings.sandbox_url or "in-process", "budget": settings.step_budget}
+
+
 @app.get("/api/meta")
 def meta() -> dict[str, Any]:
-    return {"planner": session.provider, "model": settings.gemini_model if session.provider == "gemini" else "scripted",
-            "sandbox": settings.sandbox_url or "in-process", "budget": settings.step_budget}
+    return _meta()
+
+
+class KeyReq(BaseModel):
+    api_key: str
+    model: str | None = None
+
+
+@app.post("/api/settings/key")
+def set_key(req: KeyReq) -> dict[str, Any]:
+    """Set the Gemini key for this server process only (memory, never written to disk or logs)."""
+    key = req.api_key.strip()
+    model = (req.model or settings.gemini_model).strip()
+    if not key:
+        raise HTTPException(400, "empty key")
+    try:
+        r = httpx.get(f"https://generativelanguage.googleapis.com/v1beta/models/{model}",
+                      headers={"x-goog-api-key": key}, timeout=15.0)
+    except httpx.HTTPError as e:
+        raise HTTPException(502, f"could not reach Gemini: {e.__class__.__name__}")
+    if r.status_code == 200:
+        pass
+    elif r.status_code in (400, 401, 403):
+        raise HTTPException(401, "Gemini rejected the key")
+    elif r.status_code == 404:
+        raise HTTPException(404, f"key accepted but model '{model}' not found")
+    else:
+        raise HTTPException(502, f"Gemini returned HTTP {r.status_code}")
+    settings.gemini_api_key = key
+    settings.gemini_model = model
+    session.provider = "gemini"
+    session.controllers.clear()          # new incidents get a Gemini planner
+    return _meta()
+
+
+@app.delete("/api/settings/key")
+def clear_key() -> dict[str, Any]:
+    settings.gemini_api_key = ""
+    session.provider = "mock"
+    session.controllers.clear()
+    return _meta()
 
 
 @app.get("/api/scenarios")

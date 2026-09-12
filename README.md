@@ -80,6 +80,10 @@ The **analyst chat** answers questions from the evidence ledger (via Gemini when
 commands: `/override <ip> [note]`, `/reopen <instruction>`, `/approve`, `/deny`, `/pivot`, `/outage`,
 `/kbupdate`, `/fwreject`, `/help`.
 
+No `.env`? Click **Key** in the top bar, paste a Gemini API key (and optionally a model), and hit
+*Validate & use*. The key is checked against Gemini, held in the server process's memory only, never
+written to disk or logs, and the planner switches from scripted to Gemini for the next investigation.
+
 Other commands:
 
 ```bash

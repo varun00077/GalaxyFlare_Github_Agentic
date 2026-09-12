@@ -25,8 +25,25 @@
     <span class="eyebrow">planner</span><span id="planner" class="mono val">—</span>
     <span class="eyebrow">incident</span><span id="incident-id" class="mono val">none</span>
     <span id="status-pill" class="pill idle">idle</span>
+    <button id="key-btn" class="btn" title="Gemini API key">Key</button>
   </div>
 </header>
+
+<div id="key-pop" class="keypop" hidden>
+  <div class="tag">GEMINI API KEY</div>
+  <p class="panel-note">Kept in this server's memory only — never written to disk or logs. Get one at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>.</p>
+  <form id="key-form" autocomplete="off">
+    <label class="eyebrow" for="key-input">api key</label>
+    <input id="key-input" type="password" placeholder="AIza…" autocomplete="off" spellcheck="false">
+    <label class="eyebrow" for="key-model">model</label>
+    <input id="key-model" type="text" placeholder="gemini-2.5-flash" spellcheck="false">
+    <div class="keypop-actions">
+      <button class="btn primary" type="submit" id="key-save">Validate &amp; use</button>
+      <button class="btn" type="button" id="key-clear">Use scripted planner</button>
+    </div>
+    <div id="key-status" class="key-status mono"></div>
+  </form>
+</div>
 
 <main class="grid">
   <aside class="col left">

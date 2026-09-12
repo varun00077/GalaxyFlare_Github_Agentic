@@ -16,9 +16,15 @@
   let alertsDone = new Set();
 
   // ---------------------------------------------------------------- boot
+  function applyMeta(meta) {
+    $("planner").textContent = meta.planner === "gemini" ? `gemini · ${meta.model} (${meta.key_hint})` : "scripted (offline)";
+    $("key-model").placeholder = meta.gemini_model || "gemini-2.5-flash";
+    $("key-btn").textContent = meta.has_key ? "Key ✓" : "Key";
+  }
+
   async function boot() {
     const meta = await api("/api/meta");
-    $("planner").textContent = meta.planner === "gemini" ? `gemini · ${meta.model}` : "scripted (offline)";
+    applyMeta(meta);
     $("st-budget").textContent = meta.budget;
     const scenarios = await api("/api/scenarios");
     const sel = $("scenario");
@@ -195,6 +201,29 @@
     $("st-conf").textContent = inc.verdict && inc.verdict.confidence != null ? Number(inc.verdict.confidence).toFixed(2) : "—";
   }
   function resetHero(k, v, s) { $("hero-kicker").textContent = k; $("hero-right").textContent = ""; $("hero-verdict").textContent = v; $("hero-verdict").className = "hero-verdict"; $("hero-summary").textContent = s; $("hero-chips").innerHTML = ""; }
+
+  // ---------------------------------------------------------------- gemini key
+  $("key-btn").addEventListener("click", () => {
+    const p = $("key-pop");
+    p.hidden = !p.hidden;
+    if (!p.hidden) { p.style.top = `${document.querySelector(".bar").getBoundingClientRect().bottom + 10}px`; $("key-input").focus(); }
+  });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") $("key-pop").hidden = true; });
+  $("key-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const st = $("key-status");
+    st.className = "key-status mono"; st.textContent = "validating…";
+    try {
+      const meta = await api("/api/settings/key", { method: "POST", body: JSON.stringify({ api_key: $("key-input").value, model: $("key-model").value || null }) });
+      applyMeta(meta);
+      $("key-input").value = "";
+      st.className = "key-status mono ok"; st.textContent = `ok · planner is now gemini · ${meta.model}. Applies to the next investigation.`;
+    } catch (err) { st.className = "key-status mono bad"; st.textContent = err.message; }
+  });
+  $("key-clear").addEventListener("click", async () => {
+    try { applyMeta(await api("/api/settings/key", { method: "DELETE" })); $("key-status").className = "key-status mono"; $("key-status").textContent = "using the scripted planner"; }
+    catch (err) { toast(err.message); }
+  });
 
   // ---------------------------------------------------------------- approval + chaos + chat
   $("approve").addEventListener("click", () => approve(true));
