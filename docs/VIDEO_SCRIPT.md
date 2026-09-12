@@ -1,126 +1,130 @@
-# SOCrates — demo video scripts
+# SOCrates — demo video script
 
 Submission name: `GalaxyFlare_video_agentic` · target length 3:30–4:30 (hard limit 5:00)
 Required beats: **Goal → Decision → Action → Intermediate Result → Adaptation → Final Outcome**, plus at least one
 **failure / unexpected condition** and how the system responds.
 
-Three cuts below: **A** is the submission. **B** is a 90-second version for socials or a backup. **C** is a
-30-second "real machine" tag to append to A if there's time left under 5:00.
+The narration is written for a mixed audience: every technical term is replaced with a plain synonym or explained
+in the same sentence. Keep it that way when you ad-lib. A cheat-sheet is at the end for Q&A.
 
 ---
 
 ## Before recording (10 minutes)
 
 1. `python -m uvicorn web.app:app --port 8000`, open http://localhost:8000 at 1920×1080, browser zoom 110%,
-   dark OS theme, hide bookmarks bar. Close other tabs.
-2. Key popover → Groq loaded, planner reads `groq · openai/gpt-oss-120b`. **Do not run anything for 2 minutes
-   before recording** so all four model buckets are full (free tier: 8k tokens/min *per model*).
+   dark OS theme, hide the bookmarks bar, close other tabs.
+2. Key popover: Groq loaded, planner reads `groq · openai/gpt-oss-120b`. **Run nothing for 2 minutes before
+   recording** so all four model buckets are full (free tier: 8k tokens/min *per model*).
 3. Environment switch = **SANDBOX**, scenario **s2**, click Load. Alert queue shows `alt-2001`.
-4. Backup plan: if Groq is throttled on the day, *Key → Scripted planner*. The trace is identical in shape; say
-   "scripted planner" once in narration and move on. Never fake it.
-5. Record with system audio off, mic on; narrate live or dub after. Keep the cursor still while reading trace lines.
+4. Backup: if Groq is throttled on the day, *Key → Scripted planner*. The trace has the same shape; say
+   "scripted planner" once and move on. Never fake it.
+5. Mic on, system audio off. Keep the cursor still while reading a trace line.
 
 ---
 
-## Cut A — submission (≈4:10)
+## Cut A — submission (≈4:15)
 
-### 0:00 – 0:25 · Hook (title card over the idle console)
+### 0:00 – 0:25 · Hook
+**Screen:** idle console. Title card: *SOCrates — an AI agent that finds out whether a cyber-attack actually worked.*
 
-**On screen:** console with "Pick an alert" hero. Title card text: *SOCrates — an autonomous SOC agent that
-decides whether an attack actually landed.*
+> Companies run alarm systems on their networks. Every time something looks like an attack, an alarm fires —
+> thousands a day. But an alarm only says "someone tried". It doesn't say whether they got in. Finding that out
+> is a human job today: a security analyst spends fifteen to forty-five minutes per alarm digging through logs,
+> software versions and vulnerability reports. SOCrates is an AI agent that does that digging itself. It decides
+> what to check next, reaches a verdict it can prove with evidence, takes a safe response, checks that the
+> response worked, and changes its mind when new information arrives. Everything you'll see runs against a
+> simulated company network — nothing touches a real one.
 
-**Narration:**
-> A NIDS alert only proves that an attack was attempted. Working out whether it *succeeded* takes a Tier-1
-> analyst fifteen to forty-five minutes of pulling logs, versions and advisories together. SOCrates is an
-> agent that does that investigation itself — decides what evidence to fetch next, reaches an evidence-backed
-> verdict, responds inside a sandbox only when the guardrails allow it, verifies the response, and changes its
-> mind when the world or an analyst gives it a reason to. Everything you'll see runs against a synthetic
-> environment; nothing touches a real network.
+### 0:25 – 0:45 · The goal
+**Screen:** hover the alert card. Click **Run**. The GOAL line appears.
 
-### 0:25 – 0:45 · Goal
+> Here's one alarm: an attempt to break into a server called app02 using a well-known bug in a logging
+> library — the "Log4Shell" bug from 2021. We give the agent one goal: find out whether this attack succeeded,
+> respond safely, and confirm the response worked. Watch the trace on screen. Every line is labelled — Decision
+> means the agent chose something, Action means it did something, Verify means it double-checked, Adapt means
+> it changed plan.
 
-**On screen:** hover the alert card `ET EXPLOIT Apache log4j RCE Attempt … 203.0.113.66 → 10.20.0.22`. Click **Run**.
-The GOAL line appears in the trace.
+### 0:45 – 1:35 · Investigating
+**Screen:** trace runs: `get_alert` → `get_flow` → `get_asset` → `lookup_cves` → `search_playbooks` →
+`search_logs` ×3. Evidence ledger fills E1–E8.
 
-**Narration:**
-> The goal is set per alert: establish whether this Log4Shell attempt against app02 succeeded, respond
-> safely, and verify the response. Watch the trace — every line is labelled Decision, Action, Result,
-> Guardrail, Verify or Adapt.
+> The agent picks its next step from what it has already learned. First it reads the network record of the
+> request — the server answered "200 OK", so the malicious request was accepted, not rejected. Then it looks up
+> the server in the inventory and sees the exact version of that logging library. It checks that version against
+> a vulnerability database — and yes, this version has the bug. Next it pulls the response playbook for this kind
+> of attack — a written guide that says what a successful break-in leaves behind: the server calling out to the
+> attacker's machine, and the Java program launching a command shell. So it searches the server's logs for
+> exactly those traces. Every matching line goes into the evidence ledger on the right, numbered E1, E2 and so on.
+> The agent's final verdict has to point at these numbers.
 
-### 0:45 – 1:35 · Decisions and intermediate results
+*(If a purple "Planner switched to …" line appears:)*
+> That purple line means the AI model we're using hit its free-usage limit — the agent switched to a different
+> model and carried on without stopping.
 
-**On screen:** let the trace run. Point at each DECISION as it lands: `get_alert` → `get_flow` → `get_asset` →
-`lookup_cves(log4j-core 2.14.1)` → `search_playbooks` → `search_logs(outbound)` / `(process)` / `(app)`.
-Point at the evidence ledger on the right filling with E1…E8; `VULNERABLE CVE-2021-44228` and
-`post exploitation` chips.
+### 1:35 – 2:10 · Verdict, safety rules, response
+**Screen:** hero flips to **SUCCEEDED**; guardrail lines; `Blocked 203.0.113.66 (rule fw-0001)`. Firewall rule
+appears in the environment panel.
 
-**Narration:**
-> The planner picks the next tool from what it has learned so far. The flow came back HTTP 200, so the payload
-> was accepted. The asset record shows log4j-core 2.14.1 — it checks *that* library against the advisory KB
-> and it's vulnerable. It retrieves the playbook for this technique, which says what success looks like:
-> an outbound LDAP callback, java spawning a shell. Then it hunts exactly those in the host logs. Every line
-> it finds is tagged into the evidence ledger — the verdict has to cite these.
+> Verdict: the attack succeeded, with 95 percent confidence. Before anything happens, the verdict and the
+> proposed response pass through the safety rules — plain if-then rules written in code, not AI. The AI can
+> propose; the rules can only say no. Rule one: you can't declare "succeeded" unless the ledger contains actual
+> traces of the break-in — it does. Rule two: you can only block an address if confidence is high and the
+> address isn't on the trusted list — both true. So the agent blocks the attacker's address in the simulated
+> firewall — the network's gatekeeper.
 
-*(If a purple "Planner switched to …" line appears, say: "That purple line is the agent adapting to a
-rate-limited model — it rotates to another one and keeps going.")*
+### 2:10 – 2:50 · Checking its own work → adapting
+**Screen:** `VERIFY … but 1 new alert on the same host from 198.51.100.23` → purple `ADAPT Attacker pivot
+suspected`. Approval bar appears. Click **Approve**.
 
-### 1:35 – 2:10 · Verdict, guardrails, action
-
-**On screen:** hero flips to **SUCCEEDED** in red; the italic summary appears. Trace shows
-`GUARDRAIL Verdict check passed`, `ACTION Filed assessment`, `GUARDRAIL Action permitted: block_ip`,
-`ACTION Blocked 203.0.113.66 (rule fw-0001)`. Environment panel shows the firewall rule.
-
-**Narration:**
-> Verdict: SUCCEEDED, confidence 0.95. Now the guardrails — deterministic rules outside the LLM. They can only
-> downgrade a verdict or refuse an action; they never choose one. SUCCEEDED requires real post-exploitation
-> evidence — it has it. Blocking requires confidence above 0.7 and a source that isn't allow-listed — it is
-> permitted. The agent blocks the attacker in the simulated firewall.
-
-### 2:10 – 2:50 · Verification → Adaptation (the pivot)
-
-**On screen:** `VERIFY rule effective for 203.0.113.66, but 1 new alert on the same host from 198.51.100.23`,
-then purple `ADAPT Attacker pivot suspected: investigating alt-2002`. Approval bar appears for
-`isolate host app02`. Click **Approve**. Trace: `HUMAN approved`, `ACTION Isolated host app02`, `VERIFY isolated=true`.
-
-**Narration:**
-> It doesn't trust its own action. The verifier re-queries the environment: the rule is in place, no traffic
-> from that IP — but a new alert just hit the same host from a different address. That's an attacker pivot,
-> and it re-enters the investigation. Meanwhile it wants to isolate the host: code execution on a high-value
-> asset. Isolation always needs a human. I approve.
+> It doesn't assume the block worked. It goes back and checks: is the rule in place? Yes. Any more traffic from
+> that address? None. But — a new alarm has just fired on the same server from a *different* address. The
+> attacker has switched machines. The agent recognises this and reopens the investigation. At the same time it
+> wants to cut the compromised server off from the network entirely — a drastic step, so the system stops and
+> asks a human. That's me. I approve.
 
 ### 2:50 – 3:15 · Final outcome
+**Screen:** second pass on `alt-2002`; `Blocked 198.51.100.23 (rule fw-0002)`; green FINAL. Point at the stats
+row (confidence, steps, evidence, actions, LLM calls).
 
-**On screen:** second pass: `get_alert(alt-2002)`, log searches for `198.51.100.23`, `Blocked 198.51.100.23
-(rule fw-0002)`, `VERIFY … no new alerts`, green **FINAL SUCCEEDED — blocked: 203.0.113.66, 198.51.100.23**.
-Hero stats: confidence, steps, evidence, actions, LLM calls.
+> It reads the new alarm, finds the same traces for the new address, blocks that one too, checks again — clean —
+> and closes the case. Eleven decisions, two blocks, one server quarantined, every action double-checked, every
+> claim backed by a numbered line of evidence.
 
-**Narration:**
-> It correlates the follow-up, finds the same traces for the new source, blocks it, verifies again — clean —
-> and closes. Eleven planner steps, two blocks, one isolation, every action verified, every claim backed by a
-> line of evidence.
+### 3:15 – 3:55 · When things go wrong
+**Screen:** scenario **s3** → Load → Run. `ERROR search_logs failed after 3 attempts` → purple `ADAPT Log service
+unavailable…` → `ADAPT Log service recovered`. Approval for the block → **Approve**. Ticket: *Reset password for
+svc-backup*.
 
-### 3:15 – 3:55 · Failure condition (scenario s3)
+> Now let's break something. Same agent, a different alarm: someone guessing passwords over and over on the
+> company's main gateway server. Half-way through, the log search service goes down. The agent tries three
+> times, fails, and says so out loud. It lowers its own confidence and keeps working with the evidence it can
+> still reach — it never fills the gap with a guess. When the log service comes back, it returns to the login
+> records and finds the proof: after two hundred and forty failed attempts, one password was accepted. Because
+> this server is marked critical, even the block needs a human's OK. And it opens a ticket with a clear
+> instruction for the team: reset that account's password.
 
-**On screen:** environment switch stays SANDBOX; scenario **s3** → Load → Run `alt-3001`. Let it hit the outage:
-`ERROR search_logs failed after 3 attempts: log indexer unavailable`, purple `ADAPT Log service unavailable;
-continuing with flow metadata…`, then `ADAPT Log service recovered`. Approval bar for `block_ip` on the
-**critical** bastion → Approve. Ticket `Reset password for svc-backup`.
+### 3:55 – 4:15 · Close
+**Screen:** chat → `why did you block this?` → answer citing E-numbers. Architecture diagram for 4 s. End card:
+repo URL, *Team Galaxy Flare*.
 
-**Narration:**
-> Now a failure. Same loop, an SSH brute force against a critical bastion — and the log service goes down
-> mid-investigation. Three retries fail; the agent says so, caps its confidence, and continues with other
-> sources instead of inventing certainty. When the indexer comes back it returns to the auth log and finds
-> the accepted password. Because the asset is critical, even the block waits for approval. And it files a
-> ticket a human can act on: reset the compromised account.
+> At any point an analyst can ask the agent why, steer it, or overrule it. Those three things — safety rules
+> outside the AI, self-checking after every action, and a human in charge of the big decisions — are what would
+> let this run in a real security team. Team Galaxy Flare. SOCrates. Thank you.
 
-### 3:55 – 4:10 · Close
+---
 
-**On screen:** analyst chat: type `why did you block this?` → answer cites evidence ids. Cut to the
-architecture diagram (docs/ARCHITECTURE.md) for 4 seconds. End card: repo URL, team name.
+## Optional 30-second tag — real machine (append only if under 5:00)
 
-**Narration:**
-> An analyst can ask it why, steer it, or override it — and the guardrails, verifier and human gate are what
-> would let this run in a real SOC. Team Galaxy Flare, SOCrates. Thank you.
+**Screen:** environment switch → **LIVE HOST**. Alert queue shows the real Windows Defender detection. Run it.
+Trace: real process list, real Defender log lines, playbook, **FAILED (0.95)**.
+
+> One more thing. Same agent, but now the "network" is this laptop — real Windows logs, real running programs,
+> real vulnerability data from the US government's database. This is a genuine antivirus alert from earlier
+> today. Seven steps later the agent concludes: the attack failed — the antivirus quarantined the file before it
+> could run. Right answer, and correctly, it blocks nothing.
+
+*(Run it once before recording so lookups are cached. If the Defender alert isn't on the recording machine,
+run the console elevated and use the live chaos panel → FAILED LOGONS to create a real password-guessing alarm.)*
 
 ---
 
@@ -128,38 +132,37 @@ architecture diagram (docs/ARCHITECTURE.md) for 4 seconds. End card: repo URL, t
 
 | Time | Screen | Say |
 |---|---|---|
-| 0:00 | Idle console | "An alert says an attack was attempted. SOCrates works out whether it *landed*." |
-| 0:08 | Run s2, trace scrolling | "It decides what evidence to fetch next — flow, asset, advisory, host logs — and tags what it finds." |
-| 0:35 | SUCCEEDED + block | "Verdict with evidence; guardrails outside the LLM permit the block." |
-| 0:48 | VERIFY + ADAPT pivot | "It verifies its own action, spots the attacker pivot, and goes again." |
-| 1:05 | Approve isolation, FINAL | "High-impact actions wait for a human. Both IPs blocked, verified, closed." |
-| 1:20 | s3 outage line | "When a tool fails it says so and adapts — it never guesses." |
+| 0:00 | Idle console | "An alarm says someone tried to break in. SOCrates finds out whether they actually got in." |
+| 0:08 | Run s2, trace scrolling | "It decides what to check next — the request, the server, the vulnerability database, the logs — and files every clue as numbered evidence." |
+| 0:35 | SUCCEEDED + block | "Verdict with proof. Safety rules written in plain code — not AI — decide whether it may block." |
+| 0:48 | VERIFY + ADAPT pivot | "It checks its own work, notices the attacker switched machines, and goes again." |
+| 1:05 | Approve isolation, FINAL | "Drastic steps wait for a human. Both addresses blocked, verified, case closed." |
+| 1:20 | s3 outage line | "When a tool breaks it says so and adapts — it never guesses." |
 | 1:30 | End card | "Galaxy Flare · SOCrates." |
 
 ---
 
-## Cut C — 30-second "this is real" tag (append to A only if under 5:00)
+## Jargon cheat-sheet (for the narrator and Q&A)
 
-**On screen:** environment switch → **LIVE HOST**. Scenario shows `Live host: <your machine>`. Alert queue shows
-the real Windows Defender detection. Run it. Trace: real process list, real Defender log lines, playbook,
-**FAILED (0.95)** — "Defender quarantined the file before it ran".
-
-**Narration:**
-> Same agent, same guardrails, but the environment is now this laptop: real Windows event logs, live
-> connections, installed software, advisories from NVD. This is a genuine Defender alert from earlier today.
-> Seven steps later: the attack failed — Defender quarantined the file before anything ran. Correct verdict,
-> and correctly no block.
-
-*(Run this once before recording so the NVD/IP lookups are cached and the buckets are warm. If the Defender
-alert isn't present on the recording machine, use the live chaos panel → FAILED LOGONS with the console
-running elevated, and narrate a brute-force investigation instead.)*
-
----
+| Plain word used on camera | What it actually is |
+|---|---|
+| alarm / alert | a network intrusion-detection system (Suricata) flagging suspicious traffic |
+| the Log4Shell bug | CVE-2021-44228, a flaw in the Log4j logging library that lets attackers run code remotely |
+| inventory / server record | asset inventory: which servers exist and what software versions they run |
+| vulnerability database | CVE advisories (synthetic copy in the sandbox; NVD in live mode) |
+| playbook | the security team's written response guide for one type of attack |
+| traces of a break-in | post-exploitation evidence: outbound callbacks, spawned shells, accepted logins |
+| the gatekeeper / firewall | the network firewall that can drop traffic from an address |
+| cut the server off / quarantine | host isolation |
+| attacker switched machines | pivot to a new source address after being blocked |
+| gateway server | the bastion host that fronts internal access |
+| safety rules | deterministic guardrails in `agent/rules.py`, applied after the LLM's proposal |
+| double-check | the verifier re-querying the environment after every action |
 
 ## Editing notes
 
-- Speed up log-scrolling segments to 1.5× if the total runs long; never speed up the verdict or approval moments.
-- Add a 2-px highlight box around the trace line you're narrating; the kind labels are colour-coded already.
+- 1.5× only on log-scrolling stretches; never on the verdict or approval moments.
+- Highlight box around the trace line being narrated; the kind labels are colour-coded already.
 - Subtitles on — judges often watch muted.
-- Show the LLM-calls stat once (≈ 11 calls, ~25k tokens for s2) when you say "eleven planner steps".
-- File name on upload: `GalaxyFlare_video_agentic.mp4`.
+- Show the LLM-calls stat once when saying "eleven decisions".
+- Export as `GalaxyFlare_video_agentic.mp4`.
