@@ -305,15 +305,15 @@ class MockLLM(BaseLLM):
 PROVIDERS = ("gemini", "groq", "mock")
 
 
-def make_llm(provider: str | None = None) -> BaseLLM:
+def make_llm(provider: str | None = None, api_key: str | None = None, model: str | None = None) -> BaseLLM:
     provider = (provider or settings.llm_provider).lower()
     if provider == "mock":
         return MockLLM()
     if provider == "gemini":
-        return GeminiLLM()
+        return GeminiLLM(api_key=api_key, model=model)
     if provider == "groq":
         from .llm_openai import OpenAICompatLLM
-        return OpenAICompatLLM()
+        return OpenAICompatLLM(api_key=api_key, model=model)
     raise ValueError(f"unknown LLM_PROVIDER {provider!r} (expected one of {PROVIDERS})")
 
 

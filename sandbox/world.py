@@ -254,6 +254,26 @@ class World:
         self.audit.append({"seq": self._next_seq(), "ts": self._now(), "tool": tool, "args": args, "ok": ok, "error": err})
 
     # ------------------------------------------------------------------ read tools
+    # ------------------------------------------------------------------ state transport (serverless mode)
+    STATE_FIELDS = ("alerts", "flows", "logs", "allowlist", "watchlist", "firewall_rules", "isolated", "tickets",
+                    "assessments", "events", "faults", "call_counts", "seq", "audit", "cves")
+
+    def snapshot(self) -> dict[str, Any]:
+        """Everything that changes after load(), as JSON: carried by the client between stateless requests."""
+        st = {k: copy.deepcopy(getattr(self, k)) for k in self.STATE_FIELDS}
+        st["scenario_id"] = self.scenario_id
+        st["fired"] = sorted(self.fired)
+        return st
+
+    def restore(self, st: dict[str, Any]) -> None:
+        self.load(st["scenario_id"])
+        for k in self.STATE_FIELDS:
+            if k in st:
+                setattr(self, k, copy.deepcopy(st[k]))
+        self.fired = set(st.get("fired", []))
+        self._index = BM25Index(self.playbooks + self._advisory_docs())
+
+
     def list_alerts(self, since_seq: int = 0) -> list[dict[str, Any]]:
         self._count("list_alerts")
         return [a for a in self.alerts if a["seq"] > since_seq]

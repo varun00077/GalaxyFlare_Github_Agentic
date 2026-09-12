@@ -147,6 +147,8 @@ class SandboxClient:
     # -- admin
     def load_scenario(self, scenario: str) -> Any: return self._req("POST", "/scenario/load", json={"scenario": scenario})
     def scenarios(self) -> Any: return self._req("GET", "/scenarios")
+    def snapshot(self) -> Any: return self._req("GET", "/state", retry=False)
+    def restore(self, state: Any) -> Any: return self._req("POST", "/state", json=state, retry=False)
     def truth(self) -> Any: return self._req("GET", "/truth")
     def chaos(self, kind: str, payload: dict | None = None) -> Any: return self._req("POST", f"/chaos/{kind}", json=payload or {})
 

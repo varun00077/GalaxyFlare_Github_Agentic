@@ -1,0 +1,14 @@
+.venv
+venv
+data
+eval
+tests
+docs
+.claude
+.git
+*.db
+.env
+Dockerfile
+docker-compose.yml
+Makefile
+live/*.py

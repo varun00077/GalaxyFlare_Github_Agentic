@@ -108,6 +108,24 @@ python -m agent.cli run --scenario s2 --sandbox-url http://localhost:8001
 
 Docker: `docker compose up` starts the sandbox (8001) and the console (8000).
 
+### Deploying to Vercel (stateless mode)
+
+Vercel runs no long-lived processes, so the console has a second, **stateless** entry point
+([web/serverless.py](web/serverless.py), exposed through [api/index.py](api/index.py)). Each request runs the
+investigation and streams the trace back; when the agent needs an approval, or the request time budget runs
+out, the stream ends with the full state (incident + sandbox snapshot) and the browser sends it back with the
+decision. Same loop, same guardrails, same UI — only session storage moved from the server to the browser.
+
+1. Import the GitHub repo in Vercel (framework preset: *Other*). `vercel.json` already routes everything to the
+   Python function and asks for a 300 s max duration (Hobby with Fluid compute allows it; drop to 60 if your plan
+   refuses).
+2. Environment variables (Project → Settings): `LLM_PROVIDER=groq`, `GROQ_API_KEY=…` (or the Gemini pair),
+   optionally `REQUEST_BUDGET_S=240`. With no key the deployment runs the scripted planner, and anyone can paste
+   their own key via the **Key** button — it is sent as a request header and never stored server-side.
+3. Deploy. Live host mode is not available on Vercel (it needs the Windows host), so the environment switch is hidden.
+
+Locally: `LLM_PROVIDER=mock python -m uvicorn web.serverless:app --port 8001` runs the same stateless app.
+
 ## Live host mode (real data)
 
 The sandbox is for reproducible demos. Flip the **SANDBOX / LIVE HOST** switch in the console (or set
@@ -187,7 +205,8 @@ agent/            the agent
   verifier.py     post-action verification
   state.py        incident state, trace, SQLite persistence
   cli.py          command line runner
-web/              agent service + analyst console (FastAPI, SSE, vanilla JS)
+web/              agent service + analyst console (FastAPI, SSE, vanilla JS); serverless.py = stateless Vercel entry
+api/              Vercel function shim
 eval/             evaluation harness
 tests/            pytest suite
 docs/             PRD, architecture

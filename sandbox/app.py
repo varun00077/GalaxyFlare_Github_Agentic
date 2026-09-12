@@ -62,6 +62,17 @@ def scenario() -> dict[str, Any]:
     return world.meta
 
 
+@app.get("/state")
+def state() -> dict[str, Any]:
+    return world.snapshot()
+
+
+@app.post("/state")
+def restore(st: dict[str, Any]) -> dict[str, Any]:
+    world.restore(st)
+    return world.meta
+
+
 @app.get("/truth")
 def truth() -> dict[str, Any]:
     """Ground truth + current environment state. For the eval harness and UI only; the agent never calls it."""

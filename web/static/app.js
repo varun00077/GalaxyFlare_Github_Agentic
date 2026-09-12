@@ -15,12 +15,72 @@
   let evidenceCount = 0;
   let alertsDone = new Set();
 
+  // ---------------------------------------------------------------- serverless (Vercel) mode
+  // No server-side session: the browser holds {incident, world, usage} and sends it with every request.
+  const SL = { on: false, state: null, busy: false, continues: 0 };
+  const store = { get: (k) => { try { return sessionStorage.getItem(k) || localStorage.getItem(k); } catch (_) { return null; } },
+                  set: (k, v, persist) => { try { (persist ? localStorage : sessionStorage).setItem(k, v); if (!persist) localStorage.removeItem(k); } catch (_) {} },
+                  del: (k) => { try { sessionStorage.removeItem(k); localStorage.removeItem(k); } catch (_) {} } };
+  function slHeaders() {
+    const h = { "Content-Type": "application/json" };
+    const k = store.get("planner_key"), p = store.get("planner_provider"), m = store.get("planner_model");
+    if (k) h["X-Planner-Key"] = k;
+    if (p) h["X-Planner-Provider"] = p;
+    if (m) h["X-Planner-Model"] = m;
+    return h;
+  }
+  function slHandle(ev, d) {
+    if (ev === "trace") { addRow(d.event); applySummary(d.incident); }
+    else if (ev === "state") {
+      SL.state = d.state;
+      if (d.incident) applySummary(d.incident);
+      if (d.env) { renderEnv(d.env.truth); renderAlerts(d.env.alerts, d.env.handled); }
+      const inc = d.incident;
+      if (inc && inc.status === "open" && !inc.pending_approval && SL.continues < 8) {
+        SL.continues += 1;
+        toast("request time budget reached — continuing in a new request");
+        slStream("/api/resume", { state: SL.state }).catch((e) => toast(e.message));
+      } else { SL.continues = 0; }
+    }
+  }
+  async function slStream(path, body) {
+    if (SL.busy) { toast("the agent is still working — wait for it to pause or finish"); return; }
+    SL.busy = true; setStatus("open");
+    try {
+      const r = await fetch(path, { method: "POST", headers: slHeaders(), body: JSON.stringify(body) });
+      if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || j.detail || r.statusText); }
+      if ((r.headers.get("content-type") || "").includes("application/json")) {
+        const d = await r.json();
+        if (d.state) SL.state = d.state;
+        if (d.env) { renderEnv(d.env.truth); renderAlerts(d.env.alerts, d.env.handled); }
+        return d;
+      }
+      const reader = r.body.getReader(); const dec = new TextDecoder(); let buf = "";
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        let idx;
+        while ((idx = buf.indexOf("\n\n")) >= 0) {
+          const block = buf.slice(0, idx); buf = buf.slice(idx + 2);
+          let ev = null, data = null;
+          for (const line of block.split("\n")) { if (line.startsWith("event: ")) ev = line.slice(7); else if (line.startsWith("data: ")) data = line.slice(6); }
+          if (ev && data != null) { try { slHandle(ev, JSON.parse(data)); } catch (e) { console.error(e); } }
+        }
+      }
+    } finally { SL.busy = false; }
+  }
+
   // ---------------------------------------------------------------- boot
   let META = null;
   function applyMeta(meta) {
     META = meta;
+    SL.on = meta.mode === "serverless";
+    $("environment").hidden = SL.on;
     const p = meta.planner;
-    $("planner").textContent = p === "mock" ? "scripted (offline)" : `${p} · ${meta.model} (${meta.providers[p].key_hint})`;
+    const bk = SL.on ? store.get("planner_key") : null;
+    if (bk) $("planner").textContent = `${store.get("planner_provider") || "groq"} · browser key (...${bk.slice(-4)})`;
+    else $("planner").textContent = p === "mock" ? "scripted (offline)" : `${p}${meta.model ? " · " + meta.model : ""} (${meta.providers[p].key_hint})`;
     const anyKey = Object.values(meta.providers).some((x) => x.has_key);
     $("key-btn").textContent = anyKey ? "Key ✓" : "Key";
     refreshKeyPanel();
@@ -36,6 +96,7 @@
     $("key-loaded").textContent = info.has_key ? `loaded (${info.key_hint}) · model ${info.model}${META.planner === prov ? " · active" : ""}` : "no key loaded";
     $("key-model").placeholder = prov === "groq" ? "auto (best available)" : "gemini-3.6-flash";
     $("model-list").innerHTML = "";
+    if (SL.on) { const bk = store.get("planner_key"); $("key-loaded").textContent = bk && (store.get("planner_provider") || "groq") === prov ? `browser key (...${bk.slice(-4)}) · sent with each request, never stored on the server` : (info.has_key ? `deployment key loaded (${info.key_hint})` : "no key — paste one; it stays in this browser"); return; }
     if (info.has_key) api(`/api/settings/models?provider=${prov}`).then((m) => { $("model-list").innerHTML = m.models.map((x) => `<option value="${x}">`).join(""); }).catch(() => {});
   }
   $("key-provider").addEventListener("change", refreshKeyPanel);
@@ -51,6 +112,7 @@
     sel.value = env.scenario.id;
     renderAlerts(env.alerts, env.handled);
     renderEnv(env.truth);
+    if (SL.on) { $("chat-input").disabled = true; $("chat-send").disabled = true; return; }
     const existing = await api("/api/incidents");
     if (existing.length) attach(existing[existing.length - 1].id);
   }
@@ -72,10 +134,10 @@
 
   $("load").addEventListener("click", async () => {
     try {
-      await api("/api/scenario/load", { method: "POST", body: JSON.stringify({ scenario: $("scenario").value }) });
+      if (SL.on) { SL.state = null; } else { await api("/api/scenario/load", { method: "POST", body: JSON.stringify({ scenario: $("scenario").value }) }); }
       detach();
       alertsDone = new Set();
-      const env = await api("/api/env");
+      const env = await api(SL.on ? `/api/env?scenario=${encodeURIComponent($("scenario").value)}` : "/api/env");
       handledAlerts = {};
       renderAlerts(env.alerts, env.handled);
       renderEnv(env.truth);
@@ -104,6 +166,15 @@
   }
 
   async function investigate(alertId) {
+    if (SL.on) {
+      const carry = SL.state && !SL.state.incident ? SL.state : null;   // sandbox changed by chaos before the run
+      detach(); SL.continues = 0;
+      alertsDone.add(alertId);
+      incidentId = "serverless"; $("chat-input").disabled = false; $("chat-send").disabled = false; $("incident-id").textContent = "…";
+      addMsg("agent", `Investigating ${alertId}. Ask why, or use /override, /reopen, /help.`);
+      slStream("/api/run", { scenario: $("scenario").value, alert_id: alertId, state: carry }).catch((e) => { toast(e.message); setStatus("idle"); });
+      return;
+    }
     try {
       const { incident_id } = await api("/api/investigate", { method: "POST", body: JSON.stringify({ alert_id: alertId }) });
       alertsDone.add(alertId);
@@ -175,6 +246,7 @@
   }
 
   function applySummary(inc) {
+    if (SL.on && inc.id) { incidentId = inc.id; $("incident-id").textContent = inc.id; }
     setStatus(inc.running ? (inc.status === "awaiting_approval" ? "awaiting_approval" : "open") : inc.status);
     setStats(inc);
     $("hero-right").textContent = inc.scenario ? `scenario ${inc.scenario} · ${inc.status.replace("_", " ")}` : "";
@@ -257,6 +329,20 @@
     e.preventDefault();
     const st = $("key-status");
     st.className = "key-status mono"; st.textContent = "validating…";
+    if (SL.on) {
+      try {
+        const prov = $("key-provider").value, key = $("key-input").value.trim(), model = $("key-model").value.trim();
+        const r = await fetch("/api/settings/validate", { method: "POST", headers: { "Content-Type": "application/json", "X-Planner-Provider": prov, "X-Planner-Key": key, "X-Planner-Model": model }, body: "{}" });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || d.detail || r.statusText);
+        const persist = $("key-remember").checked;
+        store.set("planner_key", key, persist); store.set("planner_provider", prov, persist); if (model) store.set("planner_model", model, persist); else store.del("planner_model");
+        $("key-input").value = "";
+        applyMeta(META);
+        st.className = "key-status mono ok"; st.textContent = `ok · ${prov} · ${d.model} · key kept in this browser${persist ? " (remembered)" : " (this tab)"}`;
+      } catch (err) { st.className = "key-status mono bad"; st.textContent = err.message; }
+      return;
+    }
     try {
       const meta = await api("/api/settings/key", { method: "POST", body: JSON.stringify({ api_key: $("key-input").value, model: $("key-model").value || null, remember: $("key-remember").checked, provider: $("key-provider").value }) });
       applyMeta(meta);
@@ -266,10 +352,12 @@
   });
   $("key-use").addEventListener("click", async () => {
     const st = $("key-status");
+    if (SL.on) { st.className = "key-status mono"; st.textContent = "in this deployment the planner is chosen by the key you paste (or the env vars)"; return; }
     try { applyMeta(await api("/api/settings/provider", { method: "POST", body: JSON.stringify({ provider: $("key-provider").value }) })); st.className = "key-status mono ok"; st.textContent = `planner is now ${META.planner} · ${META.model}`; }
     catch (err) { st.className = "key-status mono bad"; st.textContent = err.message; }
   });
   $("key-clear").addEventListener("click", async () => {
+    if (SL.on) { store.del("planner_key"); store.del("planner_provider"); store.del("planner_model"); applyMeta(META); $("key-status").className = "key-status mono"; $("key-status").textContent = "using the deployment's planner (scripted unless env keys are set)"; return; }
     try { applyMeta(await api("/api/settings/key", { method: "DELETE" })); $("key-status").className = "key-status mono"; $("key-status").textContent = "using the scripted planner"; }
     catch (err) { toast(err.message); }
   });
@@ -279,11 +367,17 @@
   $("deny").addEventListener("click", () => approve(false));
   async function approve(ok) {
     if (!incidentId) return;
+    if (SL.on) { $("approval").hidden = true; slStream("/api/resume", { state: SL.state, approved: ok }).catch((e) => toast(e.message)); return; }
     try { await api(`/api/incidents/${incidentId}/approve`, { method: "POST", body: JSON.stringify({ approved: ok }) }); $("approval").hidden = true; }
     catch (e) { toast(e.message); }
   }
 
   document.querySelectorAll(".chaos-btn").forEach((b) => b.addEventListener("click", async () => {
+    if (SL.on) {
+      toast(`${b.dataset.kind} injected`);
+      slStream(`/api/chaos/${b.dataset.kind}`, { state: SL.state, scenario: $("scenario").value, payload: {} }).catch((e) => toast(e.message));
+      return;
+    }
     try {
       const res = await api(`/api/chaos/${b.dataset.kind}`, { method: "POST", body: JSON.stringify({ incident_id: incidentId, payload: {} }) });
       toast(`${b.dataset.kind}: ${JSON.stringify(res)}`);
@@ -298,6 +392,17 @@
     if (!text || !incidentId) return;
     input.value = "";
     addMsg("analyst", text);
+    if (SL.on) {
+      try {
+        const r = await fetch("/api/chat", { method: "POST", headers: slHeaders(), body: JSON.stringify({ state: SL.state, message: text }) });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || d.detail || r.statusText);
+        addMsg("agent", d.reply);
+        if (d.state) SL.state = d.state;
+        if (d.needs_run) slStream("/api/resume", { state: SL.state }).catch((e) => toast(e.message));
+      } catch (err) { addMsg("agent", `error: ${err.message}`); }
+      return;
+    }
     try {
       const { reply } = await api(`/api/incidents/${incidentId}/chat`, { method: "POST", body: JSON.stringify({ message: text }) });
       addMsg("agent", reply);

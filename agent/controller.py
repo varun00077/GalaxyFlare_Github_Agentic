@@ -7,6 +7,7 @@ Every step is written to the trace and persisted.
 """
 from __future__ import annotations
 
+import time
 from dataclasses import asdict
 from typing import Any, Callable
 
@@ -78,10 +79,15 @@ class Controller:
         return inc
 
     # ------------------------------------------------------------------ the loop
-    def investigate(self, inc: Incident) -> Incident:
+    def investigate(self, inc: Incident, deadline: float | None = None) -> Incident:
+        """Run the loop. `deadline` (time.monotonic()) lets a serverless host pause and resume in a new request."""
         while True:
             self._drain_events(inc)
             if inc.status in ("awaiting_approval", "closed", "escalated"):
+                break
+            if deadline is not None and time.monotonic() > deadline:
+                inc.status = "open"
+                self._trace(inc, "adaptation", "Pausing to stay inside the request time limit; the investigation continues in the next request")
                 break
             if inc.steps >= inc.budget:
                 self._trace(inc, "guardrail", f"Step budget ({inc.budget}) exhausted; escalating rather than guessing")
