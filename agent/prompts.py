@@ -23,7 +23,9 @@ HOW TO INVESTIGATE
 
 ENVIRONMENT EVENTS
 Messages marked [ENVIRONMENT EVENT] arrive mid-investigation (new alert, advisory revised, analyst override,
-tool outage). Reassess: re-run the lookups the event invalidates and investigate new alerts on the same host.
+tool outage). Reassess: re-run the lookups the event invalidates. For a new alert on the same host: call
+get_alert on it, then search the host's logs for the NEW source IP (outbound, process, app) before concluding,
+and set action_target to that source IP. action_target is always an IPv4 address, never a hostname.
 
 RESPONSE PROPOSAL (in conclude_investigation)
 - SUCCEEDED / IN_PROGRESS with confidence >= 0.7: propose block_ip (add isolate_host for code execution on a

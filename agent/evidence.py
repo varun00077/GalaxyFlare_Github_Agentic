@@ -140,6 +140,28 @@ def tag_result(inc: Incident, name: str, args: dict[str, Any], result: Any) -> l
     return new
 
 
+def summarize_result(name: str, result: Any) -> str:
+    """One line per tool result; the trace shows it and the planner sees it for older steps."""
+    if name == "search_logs" and isinstance(result, dict):
+        return f"{result.get('total', 0)} matching line(s) in {result.get('host')}/{result.get('source')}"
+    if name == "lookup_cves" and isinstance(result, dict):
+        v = result.get("vulnerable")
+        ids = [m["id"] for m in result.get("matches", []) if m.get("affected")]
+        return f"{result['product']} {result['version']}: {'VULNERABLE ' + ', '.join(ids) if v else ('not affected' if v is False else 'no advisories')}"
+    if name == "get_asset" and isinstance(result, dict):
+        return f"{result['hostname']} criticality={result['criticality']} services={[s['product'] + ' ' + s['version'] for s in result['services']]}"
+    if name == "get_flow" and isinstance(result, dict):
+        h = result.get("http") or {}
+        return f"flow {result.get('flow_id')}: {h.get('method', result.get('proto'))} {h.get('url', '')} -> {h.get('status', '')}"
+    if name == "search_playbooks" and isinstance(result, list):
+        return f"top: {result[0]['title']}" if result else "no playbook matched"
+    if name == "get_alert" and isinstance(result, dict):
+        return f"{result['alert']['signature']} sev{result['alert']['severity']} {result['src_ip']} -> {result['dest_ip']}:{result['dest_port']}"
+    if name == "check_allowlist" and isinstance(result, dict):
+        return f"{result['ip']}: allowlisted={result['allowlisted']} blocked={result['blocked']}"
+    return "ok"
+
+
 def tag_error(inc: Incident, name: str, args: dict[str, Any], status: int, message: str) -> list[str]:
     new: list[str] = []
     src = f"{name}({', '.join(str(v) for v in args.values())})"

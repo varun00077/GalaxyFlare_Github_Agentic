@@ -81,6 +81,7 @@ class Incident:
     escalations: list[dict[str, Any]] = field(default_factory=list)
     blocked_ips: list[str] = field(default_factory=list)
     followup_alerts: list[str] = field(default_factory=list)   # alerts surfaced by verification, still to investigate
+    followup_meta: dict[str, Any] = field(default_factory=dict)  # alert_id -> {src_ip, dest_ip} for surfaced alerts
     current_alert_id: str = ""
     logs_degraded: bool = False
     events_seen: int = 0
@@ -119,6 +120,15 @@ class Incident:
 
     def calls(self, name: str | None = None) -> list[HistoryItem]:
         return [h for h in self.history if h.kind == "call" and (name is None or h.name == name)]
+
+    def current_src_ip(self) -> str | None:
+        """Source IP of the alert under investigation (a surfaced follow-up, or the original)."""
+        meta = self.followup_meta.get(self.current_alert_id)
+        if meta and meta.get("src_ip"):
+            return meta["src_ip"]
+        if self.alert and self.current_alert_id == self.alert.get("alert_id"):
+            return self.alert.get("src_ip")
+        return (self.alert or {}).get("src_ip")
 
     def observe(self, text: str, **detail: Any) -> None:
         self.history.append(HistoryItem(step=self.steps, kind="observation", text=text, args=detail))

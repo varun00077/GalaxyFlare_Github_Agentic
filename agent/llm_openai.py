@@ -15,7 +15,7 @@ from typing import Any
 import httpx
 
 from .config import settings
-from .llm import BaseLLM, Decision, _shrink
+from .llm import BaseLLM, Decision, compact_history
 from .prompts import SYSTEM, initial_user_message
 from .state import Incident
 from .tools import PLANNER_TOOLS
@@ -95,31 +95,35 @@ class OpenAICompatLLM(BaseLLM):
         self.name = name
         if not self.api_key:
             raise RuntimeError("GROQ_API_KEY is not set (put it in .env, use the Key button, or LLM_PROVIDER=mock)")
-        self.model = resolve_model(self.base_url, self.api_key, model or settings.groq_model)
+        self.primary = resolve_model(self.base_url, self.api_key, model or settings.groq_model)
+        self.model = self.primary
+        # Fallback chain: every model has its own tokens-per-minute bucket on the free tier, so when the
+        # primary is throttled the planner moves to the next tool-capable model instead of waiting.
+        available = set(list_models(self.base_url, self.api_key))
+        self.chain = [self.primary] + [m for m in GROQ_PREFERRED if m in available and m != self.primary]
         self._c = httpx.Client(timeout=90.0)
-        self.usage: dict[str, int] = {"prompt": 0, "output": 0, "calls": 0}
+        self.usage: dict[str, int] = {"prompt": 0, "output": 0, "calls": 0, "model_switches": 0}
 
     # ------------------------------------------------------------------ conversation
     def _messages(self, inc: Incident) -> list[dict[str, Any]]:
         msgs: list[dict[str, Any]] = [{"role": "system", "content": SYSTEM},
                                       {"role": "user", "content": initial_user_message(inc.alert_id)}]
-        for i, h in enumerate(inc.history):
+        for i, (h, payload) in enumerate(compact_history(inc)):
             if h.kind == "call":
                 call_id = h.signature or f"call_{h.step}_{i}"
                 msgs.append({"role": "assistant", "content": h.rationale or None,
                              "tool_calls": [{"id": call_id, "type": "function",
                                              "function": {"name": h.name, "arguments": json.dumps(h.args)}}]})
-                resp = {"error": h.error} if h.error else {"result": _shrink(h.result, max_list=30, max_str=400)}
-                msgs.append({"role": "tool", "tool_call_id": call_id, "content": json.dumps(resp)})
+                msgs.append({"role": "tool", "tool_call_id": call_id, "content": json.dumps(payload)})
             else:
                 msgs.append({"role": "user", "content": f"[ENVIRONMENT EVENT] {h.text}"})
         if inc.evidence:
-            ledger = "\n".join(f"{e.id} [{e.category}] {e.excerpt[:160]}" for e in inc.evidence[-25:])
+            ledger = "\n".join(f"{e.id} [{e.category}] {e.excerpt[:120]}" for e in inc.evidence[-20:])
             msgs.append({"role": "user", "content": f"[EVIDENCE LEDGER so far]\n{ledger}\nContinue: call the next tool, or conclude_investigation."})
         return msgs
 
     def decide(self, inc: Incident) -> Decision:
-        body = {"model": self.model, "messages": self._messages(inc), "tools": OPENAI_TOOLS,
+        body = {"messages": self._messages(inc), "tools": OPENAI_TOOLS,
                 "tool_choice": "required", "temperature": self.temperature, "max_tokens": 1200}
         data = self._post("/chat/completions", body)
         self.usage["calls"] += 1
@@ -135,29 +139,46 @@ class OpenAICompatLLM(BaseLLM):
                 args = json.loads(fn.get("arguments") or "{}")
             except json.JSONDecodeError:
                 return Decision("text", text=f"malformed tool arguments for {name}: {fn.get('arguments')!r}")
-            return Decision("conclude" if name == "conclude_investigation" else "call", name, args or {}, text, tc.get("id", ""))
+            return Decision("conclude" if name == "conclude_investigation" else "call", name, args or {}, text, tc.get("id", ""), self.model)
         return Decision("text", text=text or "(empty response)")
 
     def complete(self, system: str, user: str) -> str:
-        data = self._post("/chat/completions", {"model": self.model, "temperature": 0.3, "max_tokens": 600,
+        data = self._post("/chat/completions", {"temperature": 0.3, "max_tokens": 600,
                                                 "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]})
         return ((data.get("choices") or [{}])[0].get("message", {}).get("content") or "").strip()
 
     # ------------------------------------------------------------------ transport
     def _post(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
+        """Send with the current model; on throttling rotate through the chain before waiting."""
         last: Exception | None = None
-        for i in range(5):
+        idx = self.chain.index(self.model) if self.model in self.chain else 0
+        waited_round = 0
+        for attempt in range(12):
+            model = self.chain[idx % len(self.chain)]
             try:
-                r = self._c.post(self.base_url + path, headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}, json=body)
+                r = self._c.post(self.base_url + path, headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
+                                 json={**body, "model": model})
             except httpx.HTTPError as e:
                 last = RuntimeError(f"{self.name} connection error: {e}")
-                time.sleep(2.0 * (2 ** i))
+                time.sleep(2.0 * (2 ** min(attempt, 4)))
                 continue
             if r.status_code == 200:
+                if model != self.model:
+                    self.usage["model_switches"] += 1
+                    self._emit(f"Planner switched to {model} ({self.model} is rate-limited on the free tier)")
+                    self.model = model
                 return r.json()
-            last = RuntimeError(f"{self.name} HTTP {r.status_code}: {r.text[:600]}")
+            last = RuntimeError(f"{self.name} HTTP {r.status_code} ({model}): {r.text[:600]}")
             if r.status_code not in (408, 429, 500, 502, 503, 504):
                 raise last
+            if r.status_code == 429 and len(self.chain) > 1 and waited_round < len(self.chain) - 1:
+                idx += 1                     # try the next model's bucket right away
+                waited_round += 1
+                continue
             delay = retry_delay_from(r)
-            time.sleep(min((delay + 0.5) if delay else 2.0 * (2 ** i), 65.0))
+            wait = min((delay + 0.5) if delay else 2.0 * (2 ** min(attempt, 4)), 65.0)
+            self._emit(f"All planner models rate-limited; waiting {wait:.0f}s" if len(self.chain) > 1 else f"Planner rate-limited (HTTP {r.status_code}); waiting {wait:.0f}s")
+            time.sleep(wait)
+            waited_round = 0
+            idx = self.chain.index(self.primary)
         raise last  # type: ignore[misc]

@@ -19,6 +19,7 @@ class Verification:
     summary: str
     followup_alert_ids: list[str] = field(default_factory=list)
     detail: dict[str, Any] = field(default_factory=dict)
+    followup_alerts: list[dict[str, Any]] = field(default_factory=list)
 
 
 def verify_block(client: SandboxClient, inc: Incident, ip: str) -> Verification:
@@ -38,7 +39,7 @@ def verify_block(client: SandboxClient, inc: Incident, ip: str) -> Verification:
     if new_alerts:
         ids = [a["alert_id"] for a in new_alerts]
         srcs = sorted({a["src_ip"] for a in new_alerts})
-        return Verification(True, f"rule effective for {ip}, but {len(ids)} new alert(s) on the same host from {', '.join(srcs)}: {', '.join(ids)}", ids, detail)
+        return Verification(True, f"rule effective for {ip}, but {len(ids)} new alert(s) on the same host from {', '.join(srcs)}: {', '.join(ids)}", ids, detail, new_alerts)
     return Verification(True, f"rule present for {ip}; no flows from it since; no new alerts on the host", [], detail)
 
 

@@ -30,10 +30,20 @@ class Decision:
     args: dict[str, Any] = field(default_factory=dict)
     text: str = ""                  # model prose / rationale
     signature: str = ""             # provider opaque token (Gemini thoughtSignature)
+    model: str = ""                 # model that produced this decision
 
 
 class BaseLLM:
     name = "base"
+    model = ""
+    on_event = None                 # optional callback(str) for planner-side events (rate limits, model switches)
+
+    def _emit(self, msg: str) -> None:
+        if self.on_event:
+            try:
+                self.on_event(msg)
+            except Exception:
+                pass
 
     def decide(self, inc: Incident) -> Decision:  # pragma: no cover - interface
         raise NotImplementedError
@@ -51,6 +61,29 @@ def _shrink(obj: Any, max_list: int = 40, max_str: int = 600) -> Any:
     if isinstance(obj, str) and len(obj) > max_str:
         return obj[:max_str] + "..."
     return obj
+
+
+def compact_history(inc: Incident, keep_full: int = 2, max_list: int = 12, max_str: int = 300) -> list[tuple[Any, Any]]:
+    """Pairs of (history item, replay payload). Only the most recent `keep_full` tool results are replayed in
+    full; older ones become a one-line summary plus the evidence ids they produced (the ledger carries the
+    lines). Keeps each planner call small enough for tight tokens-per-minute budgets."""
+    from .evidence import summarize_result
+    calls = [i for i, h in enumerate(inc.history) if h.kind == "call"]
+    full = set(calls[-keep_full:])
+    by_step: dict[int, list[str]] = {}
+    for e in inc.evidence:
+        by_step.setdefault(e.step, []).append(e.id)
+    out = []
+    for i, h in enumerate(inc.history):
+        if h.kind != "call":
+            out.append((h, None))
+        elif h.error:
+            out.append((h, {"error": h.error}))
+        elif i in full:
+            out.append((h, {"result": _shrink(h.result, max_list=max_list, max_str=max_str)}))
+        else:
+            out.append((h, {"summary": summarize_result(h.name, h.result), "evidence_ids": by_step.get(h.step, [])}))
+    return out
 
 
 def rule_only_conclusion(inc: Incident) -> dict[str, Any]:
@@ -111,18 +144,17 @@ class GeminiLLM(BaseLLM):
             else:
                 contents.append({"role": role, "parts": [part]})
 
-        for h in inc.history:
+        for h, payload in compact_history(inc):
             if h.kind == "call":
                 # Gemini 3 thinking models require the thought signature to be echoed with each replayed call;
                 # calls made before a resume (or by the scripted planner) carry the documented skip token.
                 add("model", {"functionCall": {"name": h.name, "args": h.args},
                               "thoughtSignature": h.signature or "skip_thought_signature_validator"})
-                resp = {"error": h.error} if h.error else {"result": _shrink(h.result)}
-                add("user", {"functionResponse": {"name": h.name, "response": resp}})
+                add("user", {"functionResponse": {"name": h.name, "response": payload}})
             else:
                 add("user", {"text": f"[ENVIRONMENT EVENT] {h.text}"})
         if inc.evidence:
-            ledger = "\n".join(f"{e.id} [{e.category}] {e.excerpt[:160]}" for e in inc.evidence[-25:])
+            ledger = "\n".join(f"{e.id} [{e.category}] {e.excerpt[:120]}" for e in inc.evidence[-20:])
             add("user", {"text": f"[EVIDENCE LEDGER so far]\n{ledger}"})
         return contents
 
@@ -146,7 +178,7 @@ class GeminiLLM(BaseLLM):
             fc = p.get("functionCall")
             if fc:
                 name, args = fc.get("name", ""), fc.get("args") or {}
-                return Decision("conclude" if name == "conclude_investigation" else "call", name, args, text, p.get("thoughtSignature") or sig)
+                return Decision("conclude" if name == "conclude_investigation" else "call", name, args, text, p.get("thoughtSignature") or sig, self.model)
         return Decision("text", text=text or "(empty response)")
 
     def complete(self, system: str, user: str) -> str:
@@ -173,7 +205,9 @@ class GeminiLLM(BaseLLM):
             if r.status_code not in (408, 429, 500, 502, 503, 504):
                 raise last
             delay = retry_delay_from(r)
-            time.sleep(min((delay + 0.5) if delay else 2.0 * (2 ** i), 65.0))
+            wait = min((delay + 0.5) if delay else 2.0 * (2 ** i), 65.0)
+            self._emit(f"Planner rate-limited by Gemini (HTTP {r.status_code}); waiting {wait:.0f}s before retrying")
+            time.sleep(wait)
         raise last  # type: ignore[misc]
 
 

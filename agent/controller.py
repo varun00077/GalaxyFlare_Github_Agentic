@@ -11,7 +11,7 @@ from dataclasses import asdict
 from typing import Any, Callable
 
 from .config import settings
-from .evidence import tag_error, tag_result
+from .evidence import summarize_result, tag_error, tag_result
 from .llm import BaseLLM, Decision, rule_only_conclusion
 from .rules import ActionDecision, decide_actions, gate_verdict
 from .state import HistoryItem, Incident, IncidentStore
@@ -100,7 +100,7 @@ class Controller:
                     self._trace(inc, "adaptation", "Planner failed to act twice; concluding from the evidence ledger (rule-only fallback)")
                     d = Decision("conclude", "conclude_investigation", rule_only_conclusion(inc), "rule-only fallback")
             if d.kind == "call":
-                self._trace(inc, "decision", f"{d.name}({self._fmt(d.args)})", tool=d.name, args=d.args, rationale=d.text)
+                self._trace(inc, "decision", f"{d.name}({self._fmt(d.args)})", tool=d.name, args=d.args, rationale=d.text, model=d.model)
                 if d.name == "record_evidence":
                     e = inc.add_evidence(str(d.args.get("category", "context")), "planner", str(d.args.get("excerpt", "")), 0.8, str(d.args.get("meaning", "")))
                     inc.history.append(HistoryItem(step=inc.steps, kind="call", name=d.name, args=d.args, result={"recorded": e.id}, rationale=d.text, signature=d.signature))
@@ -114,6 +114,7 @@ class Controller:
         return inc
 
     def _decide(self, inc: Incident) -> Decision:
+        self.llm.on_event = lambda msg: self._trace(inc, "adaptation", msg)
         try:
             d = self.llm.decide(inc)
             self._llm_failures = 0
@@ -153,7 +154,7 @@ class Controller:
     # ------------------------------------------------------------------ conclusion, gates, actions
     def _conclude(self, inc: Incident, draft: dict[str, Any], rationale: str) -> None:
         self._trace(inc, "decision", f"Planner concludes {draft.get('verdict')} (confidence {draft.get('confidence')}), proposes {draft.get('proposed_action')}",
-                    draft=draft, rationale=rationale)
+                    draft=draft, rationale=rationale, model=getattr(self.llm, "model", self.llm.name))
         gate = gate_verdict(draft, inc)
         self._trace(inc, "guardrail", ("Verdict downgraded to " if gate.downgraded else "Verdict check passed: ") + gate.verdict, notes=gate.notes,
                     confidence=gate.confidence, blocked=gate.downgraded)
@@ -230,6 +231,8 @@ class Controller:
                 self._trace(inc, "adaptation", "Block not effective; re-entering the investigation")
                 reopen = True
             if v.followup_alert_ids:
+                for a in v.followup_alerts:
+                    inc.followup_meta[a["alert_id"]] = {"src_ip": a.get("src_ip"), "dest_ip": a.get("dest_ip")}
                 for aid in v.followup_alert_ids:
                     if aid not in inc.followup_alerts:
                         inc.followup_alerts.append(aid)
@@ -283,6 +286,11 @@ class Controller:
                     continue
                 inc.followup_alerts.append(aid)
                 inc.current_alert_id = aid
+                try:
+                    rec = self.client.get_alert(aid)
+                    inc.followup_meta[aid] = {"src_ip": rec.get("src_ip"), "dest_ip": rec.get("dest_ip")}
+                except ToolError:
+                    pass
                 inc.observe(ev.get("note", f"New alert {aid}"), type="new_alert", alert_ids=[aid])
                 self._trace(inc, "adaptation", f"Environment event: {ev.get('note')}", event=ev)
                 inc.status = "open"
@@ -353,23 +361,7 @@ class Controller:
     @staticmethod
     def _summ(name: str, result: Any, ids: list[str]) -> str:
         tail = f" -> evidence {', '.join(ids)}" if ids else ""
-        if name == "search_logs" and isinstance(result, dict):
-            return f"{result.get('total', 0)} matching line(s) in {result.get('host')}/{result.get('source')}{tail}"
-        if name == "lookup_cves" and isinstance(result, dict):
-            v = result.get("vulnerable")
-            return f"{result['product']} {result['version']}: {'VULNERABLE' if v else ('not affected' if v is False else 'no advisories')} ({len(result.get('matches', []))} CVE(s) checked){tail}"
-        if name == "get_asset" and isinstance(result, dict):
-            return f"{result['hostname']} criticality={result['criticality']} services={[s['product'] + ' ' + s['version'] for s in result['services']]}{tail}"
-        if name == "get_flow" and isinstance(result, dict):
-            h = result.get("http") or {}
-            return f"flow {result.get('flow_id')}: {h.get('method', result.get('proto'))} {h.get('url', '')} -> {h.get('status', '')}{tail}"
-        if name == "search_playbooks" and isinstance(result, list):
-            return f"top: {result[0]['title']}" if result else "no playbook matched"
-        if name == "get_alert" and isinstance(result, dict):
-            return f"{result['alert']['signature']} sev{result['alert']['severity']} {result['src_ip']} -> {result['dest_ip']}:{result['dest_port']}{tail}"
-        if name == "check_allowlist" and isinstance(result, dict):
-            return f"{result['ip']}: allowlisted={result['allowlisted']} blocked={result['blocked']}{tail}"
-        return f"ok{tail}"
+        return summarize_result(name, result) + tail
 
     def _trace(self, inc: Incident, kind: str, title: str, **detail: Any) -> None:
         ev = inc.add_trace(kind, title, **detail)

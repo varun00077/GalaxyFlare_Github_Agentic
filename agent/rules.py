@@ -9,8 +9,11 @@ Every decision they make is returned as a list of notes so the trace can show
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any
+
+_IPV4 = re.compile(r"^(?:\d{1,3}\.){3}\d{1,3}$")
 
 from .config import settings
 from .state import Incident
@@ -88,8 +91,16 @@ class ActionDecision:
 def decide_actions(final: GateResult, draft: dict[str, Any], inc: Incident, allowlisted: bool) -> list[ActionDecision]:
     """Translate the planner's proposed action into gated, concrete actions."""
     proposed = str(draft.get("proposed_action", "none"))
-    src_ip = (inc.alert or {}).get("src_ip") if inc.alert else None
-    target_ip = draft.get("action_target") or src_ip
+    src_ip = inc.current_src_ip()
+    requested = str(draft.get("action_target") or "").strip()
+    target_note = ""
+    if requested and _IPV4.match(requested):
+        target_ip = requested
+    else:
+        # Hostnames, empty targets and typos never reach the firewall: fall back to the source under investigation.
+        target_ip = src_ip
+        if requested:
+            target_note = f" (planner gave '{requested}', which is not an IPv4 address; using the alert source {src_ip})"
     host = (inc.asset or {}).get("hostname")
     critical = (inc.asset or {}).get("criticality") == "critical"
     out: list[ActionDecision] = []
@@ -117,7 +128,7 @@ def decide_actions(final: GateResult, draft: dict[str, Any], inc: Incident, allo
             out.append(ActionDecision("escalate", None, True, False, "confidence too low for autonomous block"))
         else:
             out.append(ActionDecision("block_ip", target_ip, True, critical,
-                                      "critical asset: block needs analyst approval" if critical else "block permitted: SUCCEEDED, confidence >= threshold, source not allow-listed"))
+                                      ("critical asset: block needs analyst approval" if critical else "block permitted: SUCCEEDED, confidence >= threshold, source not allow-listed") + target_note))
     else:
         out.append(ActionDecision("escalate", None, True, False, "successful attack without a proposed block: escalating for human response"))
 

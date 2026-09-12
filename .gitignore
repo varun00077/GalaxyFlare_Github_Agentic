@@ -13,3 +13,5 @@ build/
 node_modules/
 .DS_Store
 .claude/
+eval/traces/
+eval/results_*.json

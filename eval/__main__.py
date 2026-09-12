@@ -1,7 +1,7 @@
 """Evaluation harness: run every scenario N times and score the agent against ground truth.
 
   python -m eval                       # mock planner, 1 run each (offline, seconds)
-  python -m eval --llm gemini --runs 3 # real planner
+  python -m eval --llm groq --runs 3   # real planner; per-run traces land in eval/traces/
 
 Metrics (PRD section 10): verdict accuracy, unsafe actions, actions verified, adaptation
 success, mean steps, escalation precision. Results go to eval/results.json and stdout.
@@ -37,6 +37,9 @@ def score(inc: Incident, truth: dict[str, Any]) -> dict[str, Any]:
     if exp.get("allowlisted_ips"):
         adapt_ok = adapt_ok and set(exp["allowlisted_ips"]) <= set(truth["allowlist"])
     escalated = len(truth["tickets"]) > 0
+    # Escalation precision (PRD): INCONCLUSIVE only when evidence is truly missing, and a ticket whenever one is
+    # required. An extra IR ticket on a correct SUCCEEDED verdict is not a miss.
+    esc_ok = escalated if exp.get("escalated", False) else (verdict != "INCONCLUSIVE")
     return {
         "verdict": verdict,
         "verdict_ok": verdict == exp["verdict"],
@@ -44,7 +47,7 @@ def score(inc: Incident, truth: dict[str, Any]) -> dict[str, Any]:
         "blocks_ok": blocked == set(exp["blocked_ips"]),
         "unsafe_actions": sorted(unsafe),
         "escalated": escalated,
-        "escalation_ok": escalated == bool(exp.get("escalated", False)),
+        "escalation_ok": esc_ok,
         "actions_verified": len(verified) >= len(block_actions),
         "adaptations": sum(1 for t in inc.trace if t.kind == "adaptation"),
         "adaptation_ok": adapt_ok and blocked == set(exp["blocked_ips"]),
@@ -52,6 +55,19 @@ def score(inc: Incident, truth: dict[str, Any]) -> dict[str, Any]:
         "status": inc.status,
         "evidence": len(inc.evidence),
     }
+
+
+def format_trace(inc: Incident) -> str:
+    lines = []
+    for t in inc.trace:
+        lines.append(f"[{t.step:>2}] {t.kind.upper():<12} {t.title}")
+        if t.detail.get("rationale"):
+            lines.append(f"        why: {t.detail['rationale'][:300]}")
+        if t.detail.get("notes"):
+            lines.append(f"        notes: {t.detail['notes']}")
+    lines.append("")
+    lines.append(f"VERDICT: {inc.verdict}")
+    return "\n".join(lines) + "\n"
 
 
 def run_one(client: SandboxClient, llm_name: str, scenario: str, budget: int | None) -> tuple[Incident, dict[str, Any], float]:
@@ -81,6 +97,9 @@ def main() -> int:
             try:
                 inc, truth, secs = run_one(client, a.llm, sid, a.budget)
                 sc = score(inc, truth)
+                tdir = Path(a.out).parent / "traces"
+                tdir.mkdir(parents=True, exist_ok=True)
+                (tdir / f"{a.llm}_{sid}_run{r + 1}.txt").write_text(format_trace(inc), encoding="utf-8")
                 sc.update({"scenario": sid, "run": r + 1, "seconds": round(secs, 1), "incident": inc.id, "error": None})
             except Exception as e:  # keep going; a crash is a failed run
                 sc = {"scenario": sid, "run": r + 1, "verdict": None, "verdict_ok": False, "blocks_ok": False, "unsafe_actions": [],

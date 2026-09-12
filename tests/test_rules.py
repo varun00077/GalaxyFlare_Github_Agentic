@@ -64,3 +64,15 @@ def test_action_policy():
     f = gate_verdict({"verdict": "FAILED", "confidence": 0.9}, inc2)
     d = decide_actions(f, {"proposed_action": "block_ip"}, inc2, allowlisted=False)
     assert not d[0].allowed and d[1].action == "watchlist"
+
+
+def test_hostname_target_falls_back_to_source_ip():
+    inc = _inc(asset_vulnerable=True)
+    inc.add_evidence("post_exploitation", "x", "y")
+    g = gate_verdict({"verdict": "SUCCEEDED", "confidence": 0.9}, inc)
+    d = decide_actions(g, {"proposed_action": "block_ip", "action_target": "app02"}, inc, allowlisted=False)
+    assert d[0].action == "block_ip" and d[0].target == "203.0.113.1" and "not an IPv4" in d[0].reason
+    inc.current_alert_id = "alt-x"
+    inc.followup_meta["alt-x"] = {"src_ip": "198.51.100.23", "dest_ip": "10.20.0.22"}
+    d = decide_actions(g, {"proposed_action": "block_ip", "action_target": ""}, inc, allowlisted=False)
+    assert d[0].target == "198.51.100.23"
