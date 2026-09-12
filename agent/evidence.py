@@ -21,14 +21,19 @@ GENERIC_POST_EXPLOIT = [
     (r"\?cmd=.* 200 ", "web shell executed a command"),
     (r"useradd|usermod -aG (sudo|wheel)", "privileged account created/modified"),
     (r"root:x:0:0", "/etc/passwd content returned"),
+    (r"defender (action|detected) .*(execution=Running|action=(Allow|NoAction)|result=(?!The operation completed successfully|-)[^ ].*(fail|error|denied))", "Defender did not stop the threat (running, allowed, or remediation failed)"),
+    (r"4688 process created .*(mimikatz|procdump|psexec|certutil .*-urlcache|powershell .*-enc)", "suspicious process created"),
 ]
+WIN_LOGON_OK = re.compile(r"4624 successful logon user=(\S+) domain=\S+ type=(3|10) src=([0-9.]+)")
+WIN_LOGON_FAIL = re.compile(r"4625 failed logon .*src=(\S+)")
 GENERIC_BLOCKED = [
+    (r"defender action .*action=(Quarantine|Remove|Clean|Block).*result=The operation completed successfully", "Defender quarantined/removed the threat before it ran"),
     (r"\" 403 ", "request answered 403"),
     (r"action=BLOCK", "WAF blocked the request"),
     (r"connection reset|RST", "connection reset before completion"),
     (r"\" (400|404|415) ", "request rejected"),
 ]
-BRUTE_FORCE = r"Failed password"
+BRUTE_FORCE = r"Failed password|4625 failed logon"
 
 
 def _match_indicators(inc: Incident, line: str, source: str) -> tuple[str, str] | None:
@@ -81,6 +86,10 @@ def tag_result(inc: Incident, name: str, args: dict[str, Any], result: Any) -> l
             e = inc.add_evidence("context", src, f"HTTP 200 ({http.get('length')} bytes) for {http.get('method')} {http.get('url')}", 0.4,
                                  "payload was accepted; outcome still unknown")
             new.append(e.id)
+        logon = result.get("logon") or {}
+        if logon.get("failed_attempts", 0) >= 5:
+            e = inc.add_evidence("brute_force", src, f"{logon['failed_attempts']} failed Windows logons (4625) from {logon.get('source_label')} trying {len(logon.get('usernames_tried', []))} account(s), types {logon.get('logon_types')}", 0.5, "credential guessing burst (live host)")
+            new.append(e.id)
         ssh = result.get("ssh") or {}
         if ssh.get("auth_attempts_observed", 0) > 20:
             e = inc.add_evidence("brute_force", src, f"{ssh['auth_attempts_observed']} SSH auth attempts in one flow", 0.5, "credential guessing burst")
@@ -118,11 +127,31 @@ def tag_result(inc: Incident, name: str, args: dict[str, Any], result: Any) -> l
             if not tag:
                 continue
             cat, meaning = tag
-            # Blocked/allowed lines only count when they involve the attacker (or the alert flow).
-            if attackers and cat == "attack_blocked" and not any(ip in line for ip in attackers):
+            # Web/auth block lines only count when they involve the attacker; host-side sources (defender, process)
+            # and loopback/local "attackers" carry no source IP to match on.
+            real_attackers = {ip for ip in attackers if not ip.startswith("127.")}
+            if real_attackers and cat == "attack_blocked" and source in ("web", "auth", "db") and not any(ip in line for ip in real_attackers):
                 continue
             e = inc.add_evidence(cat, f"search_logs({result['host']}/{source})", line, 1.0 if cat == "post_exploitation" else 0.8, meaning)
             new.append(e.id)
+        if source == "security":
+            fails_by_src: dict[str, int] = {}
+            ok_by_src: dict[str, str] = {}
+            for m in result.get("matches", []):
+                line = m.get("line", "")
+                mf = WIN_LOGON_FAIL.search(line)
+                if mf:
+                    fails_by_src[mf.group(1)] = fails_by_src.get(mf.group(1), 0) + 1
+                mo = WIN_LOGON_OK.search(line)
+                if mo and (mo.group(3) in attackers or mo.group(3) in fails_by_src):
+                    ok_by_src[mo.group(3)] = line
+            for s_ip, line in ok_by_src.items():
+                e = inc.add_evidence("post_exploitation", f"search_logs({result['host']}/security)", line, 1.0, f"successful network/RDP logon from {s_ip} after failed attempts")
+                new.append(e.id)
+            for s_ip, n in fails_by_src.items():
+                if n >= 3 and s_ip not in ok_by_src and (not attackers or s_ip in attackers or s_ip in ("127.0.0.1", "-", "::1")):
+                    e = inc.add_evidence("attack_blocked", f"search_logs({result['host']}/security)", f"{n} failed logons (4625) from {s_ip} and no successful logon (4624) from it in the window", 0.8, "credential guessing did not gain access")
+                    new.append(e.id)
         total = result.get("total", 0)
         if failed >= 20 or (source == "auth" and total >= 50):
             e = inc.add_evidence("brute_force", f"search_logs({result['host']}/{source})", f"{max(failed, total)} failed-password lines from the source", 0.5, "credential guessing burst")

@@ -15,7 +15,7 @@ from typing import Any
 import httpx
 
 from .config import settings
-from .llm import BaseLLM, Decision, compact_history
+from .llm import COMPACTION, BaseLLM, Decision, RequestTooLarge, compact_history
 from .prompts import SYSTEM, initial_user_message
 from .state import Incident
 from .tools import PLANNER_TOOLS
@@ -42,8 +42,17 @@ def _lower_schema(node: Any) -> Any:
     return node
 
 
+def _openai_params(params: dict[str, Any]) -> dict[str, Any]:
+    p = _lower_schema(params)
+    # ids arrive as numbers in alert records; accept either so strict validators (Groq) do not reject the call
+    for key in ("flow_id",):
+        if key in p.get("properties", {}):
+            p["properties"][key] = {"anyOf": [{"type": "string"}, {"type": "integer"}], "description": p["properties"][key].get("description", "")}
+    return p
+
+
 OPENAI_TOOLS = [{"type": "function", "function": {"name": t["name"], "description": t["description"],
-                                                  "parameters": _lower_schema(t["parameters"])}} for t in PLANNER_TOOLS]
+                                                  "parameters": _openai_params(t["parameters"])}} for t in PLANNER_TOOLS]
 
 
 def retry_delay_from(resp: httpx.Response) -> float | None:
@@ -105,10 +114,11 @@ class OpenAICompatLLM(BaseLLM):
         self.usage: dict[str, int] = {"prompt": 0, "output": 0, "calls": 0, "model_switches": 0}
 
     # ------------------------------------------------------------------ conversation
-    def _messages(self, inc: Incident) -> list[dict[str, Any]]:
+    def _messages(self, inc: Incident, level: int = 0) -> list[dict[str, Any]]:
+        keep_full, max_list, max_str, n_led, led_chars = COMPACTION[min(level, len(COMPACTION) - 1)]
         msgs: list[dict[str, Any]] = [{"role": "system", "content": SYSTEM},
                                       {"role": "user", "content": initial_user_message(inc.alert_id)}]
-        for i, (h, payload) in enumerate(compact_history(inc)):
+        for i, (h, payload) in enumerate(compact_history(inc, keep_full, max_list, max_str)):
             if h.kind == "call":
                 call_id = h.signature or f"call_{h.step}_{i}"
                 msgs.append({"role": "assistant", "content": h.rationale or None,
@@ -118,14 +128,24 @@ class OpenAICompatLLM(BaseLLM):
             else:
                 msgs.append({"role": "user", "content": f"[ENVIRONMENT EVENT] {h.text}"})
         if inc.evidence:
-            ledger = "\n".join(f"{e.id} [{e.category}] {e.excerpt[:120]}" for e in inc.evidence[-20:])
+            ledger = "\n".join(f"{e.id} [{e.category}] {e.excerpt[:led_chars]}" for e in inc.evidence[-n_led:])
             msgs.append({"role": "user", "content": f"[EVIDENCE LEDGER so far]\n{ledger}\nContinue: call the next tool, or conclude_investigation."})
         return msgs
 
     def decide(self, inc: Incident) -> Decision:
-        body = {"messages": self._messages(inc), "tools": OPENAI_TOOLS,
-                "tool_choice": "required", "temperature": self.temperature, "max_tokens": 1200}
-        data = self._post("/chat/completions", body)
+        data = None
+        last_level = len(COMPACTION) - 1
+        for level in range(len(COMPACTION)):
+            body = {"messages": self._messages(inc, level), "tools": OPENAI_TOOLS,
+                    "tool_choice": "required", "temperature": self.temperature, "max_tokens": 700}
+            try:
+                # At the tightest level a 413 means the minute's budget is spent, not that the request is big:
+                # let _post treat it like a 429 (rotate models, then honor the wait).
+                data = self._post("/chat/completions", body, too_large_is_rate_limit=(level == last_level))
+                break
+            except RequestTooLarge:
+                self._emit(f"Planner request too large for {self.model}; compacting the investigation context (level {level + 1}) and retrying")
+        assert data is not None
         self.usage["calls"] += 1
         u = data.get("usage", {})
         self.usage["prompt"] += u.get("prompt_tokens", 0)
@@ -143,12 +163,12 @@ class OpenAICompatLLM(BaseLLM):
         return Decision("text", text=text or "(empty response)")
 
     def complete(self, system: str, user: str) -> str:
-        data = self._post("/chat/completions", {"temperature": 0.3, "max_tokens": 600,
+        data = self._post("/chat/completions", {"temperature": 0.3, "max_tokens": 500,
                                                 "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]})
         return ((data.get("choices") or [{}])[0].get("message", {}).get("content") or "").strip()
 
     # ------------------------------------------------------------------ transport
-    def _post(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
+    def _post(self, path: str, body: dict[str, Any], too_large_is_rate_limit: bool = True) -> dict[str, Any]:
         """Send with the current model; on throttling rotate through the chain before waiting."""
         last: Exception | None = None
         idx = self.chain.index(self.model) if self.model in self.chain else 0
@@ -169,9 +189,22 @@ class OpenAICompatLLM(BaseLLM):
                     self.model = model
                 return r.json()
             last = RuntimeError(f"{self.name} HTTP {r.status_code} ({model}): {r.text[:600]}")
-            if r.status_code not in (408, 429, 500, 502, 503, 504):
+            if r.status_code == 400 and "tool_use_failed" in r.text:
+                # The model produced a call that failed schema validation; its intent is in failed_generation.
+                try:
+                    fg = json.loads(r.json()["error"]["failed_generation"])
+                    if isinstance(fg, dict) and fg.get("name"):
+                        return {"choices": [{"message": {"content": "", "tool_calls": [{"id": f"recovered_{int(time.time())}", "type": "function",
+                                                                                            "function": {"name": fg["name"], "arguments": json.dumps(fg.get("arguments") or {})}}]}}],
+                                "usage": {}, "recovered": True}
+                except (ValueError, KeyError, TypeError):
+                    pass
+            too_large = r.status_code == 413 or (r.status_code == 429 and "too large" in r.text.lower())
+            if too_large and not too_large_is_rate_limit:
+                raise RequestTooLarge(f"{self.name} refused the request size on {model}: {r.text[:200]}")
+            if r.status_code not in (408, 413, 429, 500, 502, 503, 504):
                 raise last
-            if r.status_code == 429 and len(self.chain) > 1 and waited_round < len(self.chain) - 1:
+            if r.status_code in (413, 429) and len(self.chain) > 1 and waited_round < len(self.chain) - 1:
                 idx += 1                     # try the next model's bucket right away
                 waited_round += 1
                 continue

@@ -33,6 +33,7 @@ class Controller:
         self.on_trace = on_trace
         self._text_strikes = 0
         self._llm_failures = 0
+        self._repeat_strikes = 0
 
     # ------------------------------------------------------------------ entry points
     def run(self, scenario: str, alert_id: str) -> Incident:
@@ -99,6 +100,8 @@ class Controller:
                 if self._text_strikes >= 2:
                     self._trace(inc, "adaptation", "Planner failed to act twice; concluding from the evidence ledger (rule-only fallback)")
                     d = Decision("conclude", "conclude_investigation", rule_only_conclusion(inc), "rule-only fallback")
+            if d.kind in ("call", "conclude"):
+                self._text_strikes = 0          # a good step clears earlier hiccups
             if d.kind == "call":
                 self._trace(inc, "decision", f"{d.name}({self._fmt(d.args)})", tool=d.name, args=d.args, rationale=d.text, model=d.model)
                 if d.name == "record_evidence":
@@ -106,7 +109,19 @@ class Controller:
                     inc.history.append(HistoryItem(step=inc.steps, kind="call", name=d.name, args=d.args, result={"recorded": e.id}, rationale=d.text, signature=d.signature))
                     self._trace(inc, "result", f"Recorded {e.id} [{e.category}]", evidence=[e.id])
                 else:
-                    self._execute(inc, d.name, d.args, d.text, d.signature)
+                    prior = next((h for h in inc.calls(d.name) if h.args == d.args and not h.error and h.step >= inc.epoch_step), None)
+                    if prior is not None:
+                        # Loop guard: identical call already answered. Do not spend a tool call; tell the planner.
+                        from .evidence import summarize_result
+                        self._repeat_strikes += 1
+                        inc.observe(f"You already ran {d.name}({self._fmt(d.args)}) at step {prior.step}: {summarize_result(d.name, prior.result)}. "
+                                    f"Do not repeat it. Use a different source/pattern, or call conclude_investigation with what you have.", type="repeat")
+                        self._trace(inc, "guardrail", f"Repeated call refused: {d.name}({self._fmt(d.args)}) already ran at step {prior.step}", blocked=True)
+                        if self._repeat_strikes >= 3:
+                            self._trace(inc, "adaptation", "Planner is looping; concluding from the evidence ledger (rule-only fallback)")
+                            self._conclude(inc, rule_only_conclusion(inc), "rule-only fallback after repeated calls")
+                    else:
+                        self._execute(inc, d.name, d.args, d.text, d.signature)
             elif d.kind == "conclude":
                 self._conclude(inc, d.args, d.text)
             self._save(inc)

@@ -17,6 +17,7 @@ class Settings:
     llm_provider: str = field(default_factory=lambda: os.getenv("LLM_PROVIDER", "gemini"))
     step_budget: int = field(default_factory=lambda: int(os.getenv("STEP_BUDGET", "24")))
     sandbox_url: str = field(default_factory=lambda: os.getenv("SANDBOX_URL", ""))
+    environment: str = field(default_factory=lambda: os.getenv("ENVIRONMENT", "sandbox"))   # sandbox | live
     incident_db: str = field(default_factory=lambda: os.getenv("INCIDENT_DB", "data/incidents.db"))
     # Confidence needed before the agent may block on its own.
     block_confidence: float = 0.7

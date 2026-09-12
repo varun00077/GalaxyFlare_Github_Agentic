@@ -24,6 +24,10 @@
     const anyKey = Object.values(meta.providers).some((x) => x.has_key);
     $("key-btn").textContent = anyKey ? "Key ✓" : "Key";
     refreshKeyPanel();
+    const live = meta.environment === "live";
+    $("environment").value = meta.environment;
+    $("env-tag").textContent = live ? "LIVE HOST MODE" : "AUTONOMOUS SOC INVESTIGATION";
+    document.querySelectorAll(".chaos").forEach((el) => { el.hidden = el.classList.contains("live-only") ? !live : live; });
   }
   function refreshKeyPanel() {
     if (!META) return;
@@ -50,6 +54,21 @@
     const existing = await api("/api/incidents");
     if (existing.length) attach(existing[existing.length - 1].id);
   }
+
+  $("environment").addEventListener("change", async () => {
+    try {
+      const meta = await api("/api/settings/environment", { method: "POST", body: JSON.stringify({ environment: $("environment").value }) });
+      applyMeta(meta);
+      detach(); alertsDone = new Set();
+      const scenarios = await api("/api/scenarios");
+      $("scenario").innerHTML = scenarios.map((s) => `<option value="${s.id}">${s.id} — ${esc(s.name)}</option>`).join("");
+      const env = await api("/api/env");
+      $("scenario").value = env.scenario.id;
+      renderAlerts(env.alerts); renderEnv(env.truth);
+      resetHero("no incident", meta.environment === "live" ? "This machine" : "Pick an alert",
+        meta.environment === "live" ? `${env.scenario.name}. ${env.scenario.description}` : "Scenario loaded. Choose an alert from the queue to start the investigation.");
+    } catch (e) { toast(e.message); $("environment").value = META ? META.environment : "sandbox"; }
+  });
 
   $("load").addEventListener("click", async () => {
     try {

@@ -52,6 +52,11 @@ def cli_approver(auto: bool):
 
 
 def main(argv: list[str] | None = None) -> int:
+    for stream in (sys.stdout, sys.stderr):   # real log lines carry characters the Windows console cannot encode
+        try:
+            stream.reconfigure(errors="replace")
+        except (AttributeError, ValueError):
+            pass
     p = argparse.ArgumentParser(prog="socrates")
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("scenarios", help="list scenarios")

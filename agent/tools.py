@@ -72,12 +72,19 @@ class SandboxClient:
     """Thin HTTP client. `base_url` empty -> talk to the sandbox app in-process over ASGI
     (still HTTP semantics, no socket), which keeps tests and the CLI self-contained."""
 
-    def __init__(self, base_url: str | None = None, retries: int | None = None, backoff_s: float | None = None):
+    def __init__(self, base_url: str | None = None, retries: int | None = None, backoff_s: float | None = None,
+                 environment: str | None = None):
         self.retries = retries if retries is not None else settings.tool_retries
         self.backoff_s = backoff_s if backoff_s is not None else settings.tool_backoff_s
         base_url = base_url if base_url is not None else settings.sandbox_url
+        self.environment = environment or settings.environment
         if base_url:
-            self._c = httpx.Client(base_url=base_url, timeout=20.0)
+            self._c = httpx.Client(base_url=base_url, timeout=90.0)
+        elif self.environment == "live":
+            from fastapi.testclient import TestClient
+            from live.app import app as live_app
+            self._c = TestClient(live_app, base_url="http://live.local", raise_server_exceptions=False)
+            self._c.post("/scenario/load", json={"scenario": "live"})
         else:
             from fastapi.testclient import TestClient
             from sandbox.app import app as sandbox_app  # local import: optional dependency direction

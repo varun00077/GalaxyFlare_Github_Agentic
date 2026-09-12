@@ -14,9 +14,10 @@
 <header class="bar">
   <div class="brand">
     <span class="wordmark">SOC<em>rates</em></span>
-    <span class="brand-sub mono">AUTONOMOUS SOC INVESTIGATION</span>
+    <span class="brand-sub mono" id="env-tag">AUTONOMOUS SOC INVESTIGATION</span>
   </div>
   <div class="bar-mid">
+    <select id="environment" class="mono" title="environment"><option value="sandbox">SANDBOX</option><option value="live">LIVE HOST</option></select>
     <label for="scenario" class="eyebrow">scenario</label>
     <select id="scenario" class="mono"></select>
     <button id="load" class="btn">Load</button>
@@ -68,6 +69,11 @@
         <button class="chaos-btn" data-kind="kb_update"><b>ADVISORY</b><span>a version becomes affected</span></button>
         <button class="chaos-btn" data-kind="new_alert"><b>REPEAT</b><span>same source alerts again</span></button>
         <button class="chaos-btn" data-kind="firewall_reject"><b>FW REJECT</b><span>firewall refuses the rule</span></button>
+      </div>
+      <div class="chaos live-only" hidden>
+        <button class="chaos-btn" data-kind="brute_force_test"><b>FAILED LOGONS</b><span>generate real 4625 events on this host</span></button>
+        <button class="chaos-btn" data-kind="new_alert"><b>RESCAN</b><span>re-read event logs for new alerts</span></button>
+        <button class="chaos-btn" data-kind="override"><b>OVERRIDE</b><span>analyst: source is authorised</span></button>
       </div>
     </section>
 

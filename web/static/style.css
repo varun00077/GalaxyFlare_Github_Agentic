@@ -69,6 +69,7 @@ button, input, select { font: inherit; color: inherit; }
   background: var(--bg); border: 1px solid var(--line-2); border-radius: 999px; padding: 7px 14px; min-width: 380px;
   font-size: 12px; color: var(--ink-2);
 }
+.bar-mid select#environment { min-width: 0; letter-spacing: .1em; font-size: 10.5px; color: var(--accent); border-color: var(--accent); }
 .bar-right { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
 .pill {
   font-family: var(--mono); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase;

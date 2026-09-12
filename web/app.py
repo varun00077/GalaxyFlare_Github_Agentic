@@ -36,7 +36,8 @@ class Session:
     """Everything the UI needs to drive one sandbox + one agent."""
 
     def __init__(self) -> None:
-        self.client = SandboxClient()
+        self.environment = settings.environment
+        self.client = SandboxClient(environment=self.environment)
         self.store = IncidentStore(settings.incident_db)
         self.provider = settings.llm_provider if has_key(settings.llm_provider) else "mock"
         self.incidents: dict[str, Incident] = {}
@@ -134,7 +135,7 @@ def _model_for(provider: str) -> str:
 
 def _meta() -> dict[str, Any]:
     keys = {"gemini": settings.gemini_api_key, "groq": settings.groq_api_key}
-    return {"planner": session.provider, "model": _model_for(session.provider),
+    return {"planner": session.provider, "model": _model_for(session.provider), "environment": session.environment,
             "providers": {p: {"has_key": bool(keys[p]), "key_hint": f"...{keys[p][-4:]}" if keys[p] else "",
                               "model": _model_for(p) if keys[p] else ""} for p in ("gemini", "groq")},
             "sandbox": settings.sandbox_url or "in-process", "budget": settings.step_budget}
@@ -269,6 +270,25 @@ def clear_key() -> dict[str, Any]:
     """Drop to the scripted planner (keys stay loaded so you can switch back)."""
     session.provider = "mock"
     session.controllers.clear()
+    return _meta()
+
+
+class EnvReq(BaseModel):
+    environment: str
+
+
+@app.post("/api/settings/environment")
+def set_environment(req: EnvReq) -> dict[str, Any]:
+    """Switch between the synthetic sandbox and the live host (in-process). Not while an investigation runs."""
+    env = req.environment.lower()
+    if env not in ("sandbox", "live"):
+        raise HTTPException(400, "environment must be sandbox or live")
+    if session.running:
+        raise HTTPException(409, "an investigation is running; wait for it to finish")
+    if env != session.environment:
+        session.client = SandboxClient(environment=env)
+        session.environment = env
+        session.controllers.clear()
     return _meta()
 
 

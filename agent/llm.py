@@ -63,6 +63,17 @@ def _shrink(obj: Any, max_list: int = 40, max_str: int = 600) -> Any:
     return obj
 
 
+class RequestTooLarge(RuntimeError):
+    """Provider refused the request for size; caller should re-render with a tighter compaction level."""
+
+
+COMPACTION = [  # (keep_full, max_list, max_str, ledger_items, ledger_chars)
+    (2, 12, 300, 20, 120),
+    (1, 6, 160, 12, 90),
+    (0, 4, 100, 8, 70),
+]
+
+
 def compact_history(inc: Incident, keep_full: int = 2, max_list: int = 12, max_str: int = 300) -> list[tuple[Any, Any]]:
     """Pairs of (history item, replay payload). Only the most recent `keep_full` tool results are replayed in
     full; older ones become a one-line summary plus the evidence ids they produced (the ledger carries the

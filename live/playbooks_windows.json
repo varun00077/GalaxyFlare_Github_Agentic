@@ -1,0 +1,31 @@
+[
+  {
+    "id": "pb-win-logon-bruteforce",
+    "title": "Windows logon brute force (4625 burst, SMB/RDP/network logons)",
+    "tags": ["windows", "4625", "failed logon", "brute force", "rdp", "smb", "credential", "logon"],
+    "text": "A burst of 4625 (failed logon) events from one source is an attempt, not a compromise. Success is a 4624 (successful logon) for the same source or account after the burst - logon type 3 (network/SMB) or 10 (RDP) - followed by 4672 (special privileges) or new processes (4688) under that account. Check the security log for 4624 with src= the attacker, then the process and outbound sources for follow-on activity. Sources in private ranges are usually another machine on the LAN or a local test; still confirm. If the source is public, check reputation. Block at the host firewall when access was gained; escalate for a password reset of the targeted account.",
+    "evidence_plan": [
+      {"source": "security", "pattern": "4624 successful logon .*type=(3|10)|4672|4625 failed logon"},
+      {"source": "process", "pattern": "cmd|powershell|net|whoami|mimikatz"},
+      {"source": "outbound", "pattern": "remote="}
+    ]
+  },
+  {
+    "id": "pb-win-defender",
+    "title": "Windows Defender detection (1116/1117)",
+    "tags": ["defender", "malware", "1116", "1117", "antivirus", "detection", "quarantine"],
+    "text": "Event 1116 means Defender detected a threat; 1117 records the action taken (quarantined, removed, allowed, failed). A detection that was quarantined or removed is a FAILED attempt from the attacker's point of view. Success indicators: action=Allowed or failed remediation, the file still present, a process from the flagged path in the process list, or outbound connections from it. Check defender for the action outcome, then process and outbound.",
+    "evidence_plan": [
+      {"source": "defender", "pattern": "action|quarantin|remov|allow|fail"},
+      {"source": "process", "pattern": "temp|appdata|download"},
+      {"source": "outbound", "pattern": "remote="}
+    ]
+  },
+  {
+    "id": "pb-live-host-limits",
+    "title": "Live host mode: what the agent can and cannot do on this machine",
+    "tags": ["live", "local host", "isolation", "firewall", "dry run", "elevated", "limits"],
+    "text": "In live mode the target is the machine the agent runs on. Firewall blocks are real only when the service runs elevated with LIVE_ACTIONS=1; otherwise the rule is recorded as a dry run and verification says so. Host isolation is never performed on the local machine: propose block_ip and escalate instead. The security log needs an elevated process; if it is unavailable, work from the process list, outbound connections, Defender and system logs and cap confidence.",
+    "evidence_plan": []
+  }
+]

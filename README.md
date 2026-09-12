@@ -108,6 +108,31 @@ python -m agent.cli run --scenario s2 --sandbox-url http://localhost:8001
 
 Docker: `docker compose up` starts the sandbox (8001) and the console (8000).
 
+## Live host mode (real data)
+
+The sandbox is for reproducible demos. Flip the **SANDBOX / LIVE HOST** switch in the console (or set
+`ENVIRONMENT=live`) and the same agent investigates *the machine it runs on*:
+
+| Tool | Live source |
+|---|---|
+| alerts | derived from real events: failed-logon bursts (Security 4625), Windows Defender detections (1116/1117), or a real Suricata `eve.json` via `LIVE_EVE_JSON=path`; analysts can also submit one (`POST /live/alert`) |
+| flow | the logon / detection details behind the alert |
+| asset | this host: OS build, installed software + versions, listening sockets |
+| CVEs | **NVD live API** (keyless; `NVD_API_KEY` raises the rate limit) |
+| logs | Windows Event Logs (`security`, `system`, `application`, `defender`, `powershell`, `rdp`, `firewall`), live `process` list, live `outbound` connections |
+| allow-list / reputation | local allow-list + ip-api.com geo/ASN (+ AbuseIPDB with `ABUSEIPDB_KEY`) |
+| firewall | **dry-run by default**. Real Windows Firewall rules only when the service runs elevated *and* `LIVE_ACTIONS=1`; private/LAN addresses are refused unless `LIVE_ALLOW_PRIVATE_BLOCK=1` |
+| isolate host | never for the local machine — the agent escalates instead |
+
+The Security log needs an elevated process; without it the agent says so and works from Defender, process
+and connection data with capped confidence. `python -m agent.cli run --scenario live --llm groq` runs it
+headless. The live chaos panel can generate real failed logons (`net use` with a bogus account) to give
+the agent a fresh brute-force alert to investigate.
+
+First real result on the development laptop: a genuine Defender detection (a web-shell string inside a
+scenario file) was investigated in 7 steps and correctly concluded **FAILED** — Defender quarantined the
+file before anything ran — with the quarantine events cited as evidence.
+
 ## The six scenarios
 
 Each scenario is a JSON file in `sandbox/scenarios/` with alerts, flows, logs, scripted environment
@@ -146,6 +171,7 @@ POST /chaos/firewall_reject  firewall API refuses the next rule
 
 ```
 sandbox/          the simulated environment (FastAPI service)
+live/             the same API served from this machine: Windows event logs, live connections, NVD, IP intel
   world.py        stores, firewall, faults, triggers, chaos
   app.py          HTTP API
   retrieval.py    BM25 over playbooks + advisories
