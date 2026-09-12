@@ -313,8 +313,14 @@ def load(req: LoadReq) -> dict[str, Any]:
 @app.get("/api/env")
 def env() -> dict[str, Any]:
     c = session.client
+    # Which alerts are already covered by an incident (including follow-ups surfaced by verification)?
+    handled: dict[str, dict[str, Any]] = {}
+    for inc in session.incidents.values():
+        for aid in [inc.alert_id, *inc.followup_alerts]:
+            handled[aid] = {"incident": inc.id, "role": "follow-up" if aid != inc.alert_id else "primary",
+                            "verdict": (inc.verdict or {}).get("verdict"), "status": inc.status}
     return {"scenario": c._req("GET", "/scenario"), "alerts": c.list_alerts(), "truth": c.truth(),
-            "events": c.events(0), "rules": c.list_rules()}
+            "events": c.events(0), "rules": c.list_rules(), "handled": handled}
 
 
 class InvestigateReq(BaseModel):

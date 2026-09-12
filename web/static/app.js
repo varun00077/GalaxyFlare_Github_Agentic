@@ -49,7 +49,7 @@
     sel.innerHTML = scenarios.map((s) => `<option value="${s.id}">${s.id} — ${esc(s.name)}</option>`).join("");
     const env = await api("/api/env");
     sel.value = env.scenario.id;
-    renderAlerts(env.alerts);
+    renderAlerts(env.alerts, env.handled);
     renderEnv(env.truth);
     const existing = await api("/api/incidents");
     if (existing.length) attach(existing[existing.length - 1].id);
@@ -76,23 +76,30 @@
       detach();
       alertsDone = new Set();
       const env = await api("/api/env");
-      renderAlerts(env.alerts);
+      handledAlerts = {};
+      renderAlerts(env.alerts, env.handled);
       renderEnv(env.truth);
       resetHero("no incident", "Pick an alert", "Scenario loaded. Choose an alert from the queue to start the investigation.");
     } catch (e) { toast(e.message); }
   });
 
   // ---------------------------------------------------------------- alerts
-  function renderAlerts(alerts) {
+  let handledAlerts = {};
+  function renderAlerts(alerts, handled) {
+    if (handled) handledAlerts = handled;
     $("alert-count").textContent = alerts.length;
-    $("alerts").innerHTML = alerts.map((a) => `
-      <div class="alert ${alertsDone.has(a.alert_id) ? "done" : ""}" data-id="${a.alert_id}">
+    $("alerts").innerHTML = alerts.map((a) => {
+      const h = handledAlerts[a.alert_id];
+      const done = !!h || alertsDone.has(a.alert_id);
+      const tag = h ? `<span class="handled">${h.role === "follow-up" ? "pivot · handled in" : "handled in"} ${h.incident}${h.verdict ? " · " + h.verdict : ""}</span>` : "";
+      return `
+      <div class="alert ${done ? "done" : ""}" data-id="${a.alert_id}">
         <div>
           <div class="sig"><span class="sev s${a.alert.severity}"></span> ${esc(a.alert.signature)}</div>
-          <div class="meta"><b>${a.alert_id}</b><span>sid ${a.alert.signature_id}</span><span>${esc(a.src_ip)} → ${esc(a.dest_ip)}:${a.dest_port}</span></div>
+          <div class="meta"><b>${a.alert_id}</b><span>sid ${a.alert.signature_id}</span><span>${esc(a.src_ip)} → ${esc(a.dest_ip)}:${a.dest_port}</span>${tag}</div>
         </div>
-        <button class="btn investigate" data-id="${a.alert_id}">Run</button>
-      </div>`).join("") || `<div class="empty">No alerts in this scenario.</div>`;
+        <button class="btn investigate" data-id="${a.alert_id}">${done ? "Re-run" : "Run"}</button>
+      </div>`; }).join("") || `<div class="empty">No alerts in this scenario.</div>`;
     document.querySelectorAll(".investigate").forEach((b) => b.addEventListener("click", () => investigate(b.dataset.id)));
   }
 
@@ -136,7 +143,7 @@
   }
 
   async function refreshEnv() {
-    try { const env = await api("/api/env"); renderEnv(env.truth); renderAlerts(env.alerts); } catch (_) {}
+    try { const env = await api("/api/env"); renderEnv(env.truth); renderAlerts(env.alerts, env.handled); } catch (_) {}
   }
 
   // ---------------------------------------------------------------- rendering

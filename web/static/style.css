@@ -112,7 +112,8 @@ button, input, select { font: inherit; color: inherit; }
 .alert .meta b { color: var(--ink-2); font-weight: 500; }
 .alert .sev { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--dim); vertical-align: middle; margin-right: 2px; }
 .alert .sev.s1 { background: var(--crit); box-shadow: 0 0 8px var(--crit); } .alert .sev.s2 { background: var(--accent); } .alert .sev.s3 { background: var(--info); }
-.alert.done { opacity: .45; }
+.alert.done { opacity: .55; }
+.alert .handled { color: var(--adapt); }
 .alert .btn { padding: 6px 12px; font-size: 10px; }
 
 /* ---------- chaos */
