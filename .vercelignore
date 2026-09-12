@@ -1,6 +1,9 @@
 .venv
 venv
-data
+# Ignore only the runtime incident database at the project root.  `data` without
+# a leading slash also excludes `sandbox/data`, which contains the scenario data
+# needed by the serverless app.
+/data/
 eval
 tests
 docs
