@@ -22,7 +22,39 @@ in the same sentence. Keep it that way when you ad-lib. A cheat-sheet is at the 
 
 ---
 
-## Cut S — 2:30 version (recommended)
+## Cut S — 2:30, conversational (recommended narration)
+
+Read at a relaxed pace. `…` = half a second, `(beat)` = a full second. Let each trace line land on screen before you name it.
+
+**0:00 · Hook — idle console, title card**
+> Hi. … Did you know that a company's network alarms go off *thousands* of times a day? (beat) And every single one of them only says "someone tried". … Not whether they actually got in. (beat) So today, a human analyst sits down and spends up to forty-five minutes … per alarm … figuring that out. … We built something that does it for them. It's called SOCrates.
+
+**0:18 · Goal — click Run on the Log4Shell alert**
+> So here's one alarm. Someone's trying to break into a server called app02, … through a known bug in a logging library. (beat) We give the agent one job: was this a real break-in? … If it was, respond — safely — and then *prove* the response worked. … Let's watch.
+
+**0:32 · Investigating — trace runs; ledger fills**
+> Now, the agent doesn't follow a script. Each step, it looks at what it just learned … and decides what to check next. (beat) First, the request itself — and the server said "200 OK". So the malicious request got *in*. … Then it looks the server up: which version of that library is running? … It checks that against a vulnerability database, and … yeah. That version has the bug. (beat) Next it pulls the playbook — that's the team's written guide for this kind of attack. And the playbook says: a real break-in leaves two fingerprints. The server calling *out* to the attacker … and a command shell being launched. (beat) So it goes looking for exactly those in the logs … and it finds both. … See the panel on the right? Every clue gets filed as numbered evidence. E1, E2, E3 … The verdict has to point at these.
+
+**1:02 · Verdict + safety rules + block**
+> And there's the verdict. … Succeeded. Ninety-five percent confidence. (beat) But — before it's allowed to *do* anything, there are safety rules. And these are plain code, … not AI. The AI can suggest; the rules can only say no. (beat) Rule one: you cannot say "succeeded" without real break-in evidence in the ledger. … It has it. Rule two: you can only block an address if you're confident *and* the address isn't on the trusted list. … Both true. (beat) So, … and only now … it blocks the attacker in the firewall — think of that as the network's gatekeeper.
+
+**1:22 · Verify → pivot → approve**
+> Here's my favourite part. … It doesn't trust itself. (beat) It goes back and checks: is the block actually in place? Yes. Any more traffic from that address? … No. But — (beat) a brand new alarm just fired. Same server. *Different* address. … The attacker switched machines. (beat) And the agent catches it, and reopens the case on its own. … At the same time, it wants to cut this server off the network completely. That's a big call — so it stops, … and asks a human. (beat) That's me. … Approve.
+
+**1:45 · Final**
+> So it chases the new address, finds the same fingerprints, blocks that one too, checks again … clean … and closes the case. (beat) Eleven decisions. Two blocks. Every action double-checked. Every claim tied to a line of evidence.
+
+**1:58 · Failure — scenario s3**
+> Okay. Now let's break something. (beat) Different alarm: someone's guessing passwords, over and over, on a critical server. … And halfway through — the log service goes down. (beat) The agent tries three times. Fails. … And it *says* so. It lowers its own confidence, keeps working with what it can still reach — and it never, ever fills the gap with a guess. (beat) When the service comes back, it goes straight back to the login records … and there it is. One password accepted. … Because this server's critical, even the block waits for a human. And it opens a ticket with one clear instruction: reset that account.
+
+**2:20 · Close — chat, end card**
+> So … that's SOCrates. Safety rules outside the AI. … Self-checks after every action. … And a human on the big calls. (beat) Team Galaxy Flare. Thanks for watching.
+
+*If a purple "Planner switched to…" line appears:* "oh — and that purple line? The AI model hit its free-usage limit, so it swapped to another one and kept going." (+5 s)
+
+---
+
+## Cut S (table form) — 2:30 version
 
 Same beats as Cut A, narration cut to ~370 words. Record s2 then s3 in one session.
 
