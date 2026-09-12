@@ -49,9 +49,15 @@ def index() -> FileResponse:
 
 
 # ------------------------------------------------------------------ planner per request
+def _default_provider() -> str:
+    if has_key(settings.llm_provider) and settings.llm_provider != "mock":
+        return settings.llm_provider
+    return "groq" if settings.groq_api_key else ("gemini" if settings.gemini_api_key else "mock")
+
+
 def _planner(req: Request):
     """Key/provider/model from headers (sent by the browser) or from the deployment's env vars."""
-    provider = (req.headers.get("x-planner-provider") or settings.llm_provider).lower()
+    provider = (req.headers.get("x-planner-provider") or _default_provider()).lower()
     key = req.headers.get("x-planner-key") or None
     model = req.headers.get("x-planner-model") or None
     if provider not in ("gemini", "groq", "mock"):
@@ -63,8 +69,8 @@ def _planner(req: Request):
 
 def _meta() -> dict[str, Any]:
     keys = {"gemini": settings.gemini_api_key, "groq": settings.groq_api_key}
-    env_provider = settings.llm_provider if has_key(settings.llm_provider) else "mock"
-    return {"mode": "serverless", "planner": env_provider, "model": "", "environment": "sandbox",
+    env_provider = _default_provider()
+    return {"mode": "serverless", "planner": env_provider, "model": settings.gemini_model if env_provider == "gemini" else (settings.groq_model if env_provider == "groq" else ""), "environment": "sandbox",
             "providers": {p: {"has_key": bool(keys[p]), "key_hint": f"...{keys[p][-4:]}" if keys[p] else "", "model": ""} for p in ("gemini", "groq")},
             "sandbox": "in-process", "budget": settings.step_budget, "request_budget_s": REQUEST_BUDGET_S}
 

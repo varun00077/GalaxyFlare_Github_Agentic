@@ -139,7 +139,7 @@ class GeminiLLM(BaseLLM):
 
     def __init__(self, api_key: str | None = None, model: str | None = None, temperature: float = 0.2):
         self.api_key = api_key or settings.gemini_api_key
-        self.model = model or settings.gemini_model
+        self.model = (model or settings.gemini_model or "gemini-3.6-flash").strip()
         self.temperature = temperature
         if not self.api_key:
             raise RuntimeError("GEMINI_API_KEY is not set (put it in .env or use LLM_PROVIDER=mock)")
@@ -212,7 +212,7 @@ class GeminiLLM(BaseLLM):
                 continue
             if r.status_code == 200:
                 return r.json()
-            last = RuntimeError(f"gemini HTTP {r.status_code}: {r.text[:600]}")
+            last = RuntimeError(f"gemini HTTP {r.status_code} on model '{model or self.model}': {r.text[:600] or r.reason_phrase}")
             if r.status_code not in (408, 429, 500, 502, 503, 504):
                 raise last
             delay = retry_delay_from(r)
