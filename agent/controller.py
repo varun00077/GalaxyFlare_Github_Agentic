@@ -57,9 +57,9 @@ class Controller:
         d = ActionDecision(**pend["decision"])
         queue = [ActionDecision(**q) for q in pend.get("queue", [])]
         self._trace(inc, "human", f"{who} {'approved' if approved else 'denied'}: {d.action} {d.target or ''}", action=d.action, target=d.target, approved=approved)
-        reopen = False
+        reopen = bool(pend.get("reopen"))      # a pivot/verification failure raised before the pause still applies
         if approved:
-            reopen = self._perform(inc, d)
+            reopen = self._perform(inc, d) or reopen
         else:
             self._escalate(inc, f"analyst denied {d.action} on {d.target}; human response required", [], (inc.verdict or {}).get("summary"))
         outcome = self._run_decisions(inc, queue)
@@ -103,10 +103,10 @@ class Controller:
                 self._trace(inc, "decision", f"{d.name}({self._fmt(d.args)})", tool=d.name, args=d.args, rationale=d.text)
                 if d.name == "record_evidence":
                     e = inc.add_evidence(str(d.args.get("category", "context")), "planner", str(d.args.get("excerpt", "")), 0.8, str(d.args.get("meaning", "")))
-                    inc.history.append(HistoryItem(step=inc.steps, kind="call", name=d.name, args=d.args, result={"recorded": e.id}, rationale=d.text))
+                    inc.history.append(HistoryItem(step=inc.steps, kind="call", name=d.name, args=d.args, result={"recorded": e.id}, rationale=d.text, signature=d.signature))
                     self._trace(inc, "result", f"Recorded {e.id} [{e.category}]", evidence=[e.id])
                 else:
-                    self._execute(inc, d.name, d.args, d.text)
+                    self._execute(inc, d.name, d.args, d.text, d.signature)
             elif d.kind == "conclude":
                 self._conclude(inc, d.args, d.text)
             self._save(inc)
@@ -127,11 +127,11 @@ class Controller:
             return Decision("text", text="planner error")
 
     # ------------------------------------------------------------------ tool execution
-    def _execute(self, inc: Incident, name: str, args: dict[str, Any], rationale: str) -> None:
+    def _execute(self, inc: Incident, name: str, args: dict[str, Any], rationale: str, signature: str = "") -> None:
         try:
             result = self.client.execute(name, args)
         except ToolError as e:
-            inc.history.append(HistoryItem(step=inc.steps, kind="call", name=name, args=args, error=f"{e.status}: {e.message}", rationale=rationale))
+            inc.history.append(HistoryItem(step=inc.steps, kind="call", name=name, args=args, error=f"{e.status}: {e.message}", rationale=rationale, signature=signature))
             ids = tag_error(inc, name, args, e.status, e.message)
             if e.transient:
                 self._trace(inc, "error", f"{name} failed after {self.client.retries} attempts: {e.message}", status=e.status)
@@ -143,7 +143,7 @@ class Controller:
             else:
                 self._trace(inc, "result", f"{name}: {e.message}", status=e.status, evidence=ids)
             return
-        inc.history.append(HistoryItem(step=inc.steps, kind="call", name=name, args=args, result=result, rationale=rationale))
+        inc.history.append(HistoryItem(step=inc.steps, kind="call", name=name, args=args, result=result, rationale=rationale, signature=signature))
         ids = tag_result(inc, name, args, result)
         if name == "search_logs" and inc.logs_degraded:
             inc.logs_degraded = False

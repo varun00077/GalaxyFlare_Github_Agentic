@@ -237,8 +237,12 @@ button, input, select { font: inherit; color: inherit; }
 .keypop a { color: var(--accent); }
 .keypop form { display: flex; flex-direction: column; gap: 6px; }
 .keypop label { margin-top: 6px; }
+.keypop select { background: var(--bg); border: 1px solid var(--line-2); border-radius: 999px; padding: 9px 14px; font-family: var(--mono); font-size: 12px; color: var(--ink); }
 .keypop input { background: var(--bg); border: 1px solid var(--line-2); border-radius: 999px; padding: 9px 14px; font-family: var(--mono); font-size: 12px; color: var(--ink); }
 .keypop-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
 .key-status { font-size: 11px; color: var(--muted); min-height: 16px; margin-top: 6px; }
 .key-status.ok { color: var(--ok); } .key-status.bad { color: var(--crit); }
 .pill.gemini { color: var(--accent); border-color: var(--accent); }
+.remember { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; color: var(--muted); margin-top: 8px; cursor: pointer; }
+.remember input { margin-top: 3px; accent-color: var(--accent); }
+.remember code { font-family: var(--mono); color: var(--ink-2); }

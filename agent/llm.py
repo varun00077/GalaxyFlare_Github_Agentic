@@ -29,6 +29,7 @@ class Decision:
     name: str = ""
     args: dict[str, Any] = field(default_factory=dict)
     text: str = ""                  # model prose / rationale
+    signature: str = ""             # provider opaque token (Gemini thoughtSignature)
 
 
 class BaseLLM:
@@ -112,7 +113,10 @@ class GeminiLLM(BaseLLM):
 
         for h in inc.history:
             if h.kind == "call":
-                add("model", {"functionCall": {"name": h.name, "args": h.args}})
+                # Gemini 3 thinking models require the thought signature to be echoed with each replayed call;
+                # calls made before a resume (or by the scripted planner) carry the documented skip token.
+                add("model", {"functionCall": {"name": h.name, "args": h.args},
+                              "thoughtSignature": h.signature or "skip_thought_signature_validator"})
                 resp = {"error": h.error} if h.error else {"result": _shrink(h.result)}
                 add("user", {"functionResponse": {"name": h.name, "response": resp}})
             else:
@@ -137,28 +141,39 @@ class GeminiLLM(BaseLLM):
         self.usage["output"] += um.get("candidatesTokenCount", 0)
         parts = (data.get("candidates") or [{}])[0].get("content", {}).get("parts", [])
         text = " ".join(p["text"] for p in parts if "text" in p and not p.get("thought")).strip()
+        sig = next((p["thoughtSignature"] for p in parts if p.get("thoughtSignature")), "")
         for p in parts:
             fc = p.get("functionCall")
             if fc:
                 name, args = fc.get("name", ""), fc.get("args") or {}
-                return Decision("conclude" if name == "conclude_investigation" else "call", name, args, text)
+                return Decision("conclude" if name == "conclude_investigation" else "call", name, args, text, p.get("thoughtSignature") or sig)
         return Decision("text", text=text or "(empty response)")
 
-    def _post(self, body: dict[str, Any]) -> dict[str, Any]:
-        url = self.URL.format(model=self.model)
+    def complete(self, system: str, user: str) -> str:
+        data = self._post({"systemInstruction": {"parts": [{"text": system}]},
+                           "contents": [{"role": "user", "parts": [{"text": user}]}],
+                           "generationConfig": {"temperature": 0.3}}, model=self.model)
+        parts = (data.get("candidates") or [{}])[0].get("content", {}).get("parts", [])
+        return " ".join(p.get("text", "") for p in parts if not p.get("thought")).strip()
+
+    def _post(self, body: dict[str, Any], model: str | None = None) -> dict[str, Any]:
+        from .llm_openai import retry_delay_from  # shared retry-hint parser
+        url = self.URL.format(model=model or self.model)
         last = None
-        for i in range(4):
+        for i in range(5):
             try:
                 r = self._c.post(url, headers={"x-goog-api-key": self.api_key, "Content-Type": "application/json"}, json=body)
             except httpx.HTTPError as e:
                 last = RuntimeError(f"gemini connection error: {e}")
-            else:
-                if r.status_code == 200:
-                    return r.json()
-                last = RuntimeError(f"gemini HTTP {r.status_code}: {r.text[:300]}")
-                if r.status_code not in (429, 500, 502, 503, 504):
-                    raise last
-            time.sleep(2.0 * (2 ** i))
+                time.sleep(2.0 * (2 ** i))
+                continue
+            if r.status_code == 200:
+                return r.json()
+            last = RuntimeError(f"gemini HTTP {r.status_code}: {r.text[:600]}")
+            if r.status_code not in (408, 429, 500, 502, 503, 504):
+                raise last
+            delay = retry_delay_from(r)
+            time.sleep(min((delay + 0.5) if delay else 2.0 * (2 ** i), 65.0))
         raise last  # type: ignore[misc]
 
 
@@ -242,10 +257,20 @@ class MockLLM(BaseLLM):
         return Decision("conclude", "conclude_investigation", draft, "Evidence plan complete.")
 
 
+PROVIDERS = ("gemini", "groq", "mock")
+
+
 def make_llm(provider: str | None = None) -> BaseLLM:
     provider = (provider or settings.llm_provider).lower()
     if provider == "mock":
         return MockLLM()
     if provider == "gemini":
         return GeminiLLM()
-    raise ValueError(f"unknown LLM_PROVIDER {provider!r}")
+    if provider == "groq":
+        from .llm_openai import OpenAICompatLLM
+        return OpenAICompatLLM()
+    raise ValueError(f"unknown LLM_PROVIDER {provider!r} (expected one of {PROVIDERS})")
+
+
+def has_key(provider: str) -> bool:
+    return {"gemini": bool(settings.gemini_api_key), "groq": bool(settings.groq_api_key), "mock": True}.get(provider, False)

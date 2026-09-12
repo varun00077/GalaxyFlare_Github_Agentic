@@ -8,8 +8,6 @@ from __future__ import annotations
 import re
 from typing import Any
 
-import httpx
-
 from .config import settings
 from .state import Incident
 
@@ -53,28 +51,21 @@ def _context(inc: Incident) -> str:
             f"Tickets: {[t.get('reason') for t in inc.escalations]}\n\nEVIDENCE LEDGER:\n{ev}\n\nTRACE:\n{trace}")
 
 
-def answer_question(inc: Incident, question: str) -> str:
-    if settings.gemini_api_key:
+CHAT_SYSTEM = ("You are SOCrates, a SOC investigation agent. Answer the analyst's question about this incident "
+               "using only the incident context. Cite evidence ids (E1, E2...). Be concise: 2-5 sentences. "
+               "If the analyst asks you to do something, tell them the slash command that does it.")
+
+
+def answer_question(inc: Incident, question: str, provider: str | None = None) -> str:
+    from .llm import has_key, make_llm
+    provider = provider or settings.llm_provider
+    if provider != "mock" and has_key(provider):
         try:
-            return _gemini_answer(inc, question)
+            llm = make_llm(provider)
+            return llm.complete(CHAT_SYSTEM, f"INCIDENT CONTEXT:\n{_context(inc)}\n\nANALYST: {question}")
         except Exception as e:  # fall through to the grounded template
             return _template_answer(inc, question) + f"\n\n(LLM unavailable: {e})"
     return _template_answer(inc, question)
-
-
-def _gemini_answer(inc: Incident, question: str) -> str:
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{settings.gemini_model}:generateContent"
-    body = {
-        "systemInstruction": {"parts": [{"text": "You are SOCrates, a SOC investigation agent. Answer the analyst's question about this incident "
-                                                  "using only the incident context. Cite evidence ids (E1, E2...). Be concise: 2-5 sentences. "
-                                                  "If the analyst asks you to do something, tell them the slash command that does it."}]},
-        "contents": [{"role": "user", "parts": [{"text": f"INCIDENT CONTEXT:\n{_context(inc)}\n\nANALYST: {question}"}]}],
-        "generationConfig": {"temperature": 0.3},
-    }
-    r = httpx.post(url, headers={"x-goog-api-key": settings.gemini_api_key}, json=body, timeout=40.0)
-    r.raise_for_status()
-    parts = r.json()["candidates"][0]["content"]["parts"]
-    return " ".join(p.get("text", "") for p in parts).strip()
 
 
 def _template_answer(inc: Incident, question: str) -> str:

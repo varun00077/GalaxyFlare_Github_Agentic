@@ -57,7 +57,7 @@ def test_rule_only_conclusion_paths():
     assert c["verdict"] == "SUCCEEDED" and "bob" in c["escalation_note"]
 
 
-@pytest.mark.skipif(not os.getenv("GEMINI_API_KEY"), reason="needs GEMINI_API_KEY")
+@pytest.mark.skipif(not (os.getenv("GEMINI_API_KEY") and os.getenv("RUN_LIVE")), reason="set RUN_LIVE=1 with GEMINI_API_KEY for live tests")
 def test_gemini_live_first_step():
     """Smoke test with the real API: the first planner step on s2 must be a tool call."""
     llm = GeminiLLM()

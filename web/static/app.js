@@ -16,11 +16,25 @@
   let alertsDone = new Set();
 
   // ---------------------------------------------------------------- boot
+  let META = null;
   function applyMeta(meta) {
-    $("planner").textContent = meta.planner === "gemini" ? `gemini · ${meta.model} (${meta.key_hint})` : "scripted (offline)";
-    $("key-model").placeholder = meta.gemini_model || "gemini-2.5-flash";
-    $("key-btn").textContent = meta.has_key ? "Key ✓" : "Key";
+    META = meta;
+    const p = meta.planner;
+    $("planner").textContent = p === "mock" ? "scripted (offline)" : `${p} · ${meta.model} (${meta.providers[p].key_hint})`;
+    const anyKey = Object.values(meta.providers).some((x) => x.has_key);
+    $("key-btn").textContent = anyKey ? "Key ✓" : "Key";
+    refreshKeyPanel();
   }
+  function refreshKeyPanel() {
+    if (!META) return;
+    const prov = $("key-provider").value;
+    const info = META.providers[prov];
+    $("key-loaded").textContent = info.has_key ? `loaded (${info.key_hint}) · model ${info.model}${META.planner === prov ? " · active" : ""}` : "no key loaded";
+    $("key-model").placeholder = prov === "groq" ? "auto (best available)" : "gemini-3.6-flash";
+    $("model-list").innerHTML = "";
+    if (info.has_key) api(`/api/settings/models?provider=${prov}`).then((m) => { $("model-list").innerHTML = m.models.map((x) => `<option value="${x}">`).join(""); }).catch(() => {});
+  }
+  $("key-provider").addEventListener("change", refreshKeyPanel);
 
   async function boot() {
     const meta = await api("/api/meta");
@@ -214,11 +228,16 @@
     const st = $("key-status");
     st.className = "key-status mono"; st.textContent = "validating…";
     try {
-      const meta = await api("/api/settings/key", { method: "POST", body: JSON.stringify({ api_key: $("key-input").value, model: $("key-model").value || null }) });
+      const meta = await api("/api/settings/key", { method: "POST", body: JSON.stringify({ api_key: $("key-input").value, model: $("key-model").value || null, remember: $("key-remember").checked, provider: $("key-provider").value }) });
       applyMeta(meta);
       $("key-input").value = "";
-      st.className = "key-status mono ok"; st.textContent = `ok · planner is now gemini · ${meta.model}. Applies to the next investigation.`;
+      st.className = "key-status mono ok"; st.textContent = `ok · planner is now ${meta.planner} · ${meta.model}${meta.remembered ? " · saved to .env" : ""}. Applies to the next investigation.`;
     } catch (err) { st.className = "key-status mono bad"; st.textContent = err.message; }
+  });
+  $("key-use").addEventListener("click", async () => {
+    const st = $("key-status");
+    try { applyMeta(await api("/api/settings/provider", { method: "POST", body: JSON.stringify({ provider: $("key-provider").value }) })); st.className = "key-status mono ok"; st.textContent = `planner is now ${META.planner} · ${META.model}`; }
+    catch (err) { st.className = "key-status mono bad"; st.textContent = err.message; }
   });
   $("key-clear").addEventListener("click", async () => {
     try { applyMeta(await api("/api/settings/key", { method: "DELETE" })); $("key-status").className = "key-status mono"; $("key-status").textContent = "using the scripted planner"; }

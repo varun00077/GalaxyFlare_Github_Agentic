@@ -121,8 +121,11 @@ def decide_actions(final: GateResult, draft: dict[str, Any], inc: Incident, allo
     else:
         out.append(ActionDecision("escalate", None, True, False, "successful attack without a proposed block: escalating for human response"))
 
-    if proposed == "block_ip_and_isolate_host" and host:
+    already_isolated = any(a.get("type") == "isolate_host" and a.get("target") == host for a in inc.actions)
+    if proposed == "block_ip_and_isolate_host" and host and not already_isolated:
         out.append(ActionDecision("isolate_host", host, True, True, "host isolation always needs analyst approval"))
+    elif proposed == "block_ip_and_isolate_host" and already_isolated:
+        out.append(ActionDecision("isolate_host", host, False, False, f"{host} is already isolated by this incident"))
     if draft.get("escalation_note"):
         out.append(ActionDecision("escalate", None, True, False, str(draft["escalation_note"])))
     return out

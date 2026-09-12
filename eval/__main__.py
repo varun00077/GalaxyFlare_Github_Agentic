@@ -65,7 +65,7 @@ def run_one(client: SandboxClient, llm_name: str, scenario: str, budget: int | N
 
 def main() -> int:
     p = argparse.ArgumentParser()
-    p.add_argument("--llm", default="mock", choices=["mock", "gemini"])
+    p.add_argument("--llm", default="mock", choices=["mock", "gemini", "groq"])
     p.add_argument("--runs", type=int, default=1)
     p.add_argument("--scenarios", default=None, help="comma separated, default all")
     p.add_argument("--sandbox-url", default="")

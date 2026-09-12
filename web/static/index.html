@@ -30,16 +30,22 @@
 </header>
 
 <div id="key-pop" class="keypop" hidden>
-  <div class="tag">GEMINI API KEY</div>
-  <p class="panel-note">Kept in this server's memory only — never written to disk or logs. Get one at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>.</p>
+  <div class="tag">PLANNER KEY</div>
+  <p class="panel-note">Held in this server's memory (or in <code>.env</code> if you tick remember); never logged. Keys: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Gemini</a> · <a href="https://console.groq.com/keys" target="_blank" rel="noopener">Groq</a>.</p>
   <form id="key-form" autocomplete="off">
+    <label class="eyebrow" for="key-provider">provider</label>
+    <select id="key-provider"><option value="groq">Groq (OpenAI-compatible)</option><option value="gemini">Gemini</option></select>
+    <div id="key-loaded" class="key-status mono"></div>
     <label class="eyebrow" for="key-input">api key</label>
     <input id="key-input" type="password" placeholder="AIza…" autocomplete="off" spellcheck="false">
     <label class="eyebrow" for="key-model">model</label>
-    <input id="key-model" type="text" placeholder="gemini-2.5-flash" spellcheck="false">
+    <input id="key-model" type="text" placeholder="auto" list="model-list" spellcheck="false">
+    <datalist id="model-list"></datalist>
+    <label class="remember"><input type="checkbox" id="key-remember"> <span>remember in <code>.env</code> on this machine (gitignored) so it survives restarts</span></label>
     <div class="keypop-actions">
       <button class="btn primary" type="submit" id="key-save">Validate &amp; use</button>
-      <button class="btn" type="button" id="key-clear">Use scripted planner</button>
+      <button class="btn" type="button" id="key-use">Use this provider</button>
+      <button class="btn" type="button" id="key-clear">Scripted planner</button>
     </div>
     <div id="key-status" class="key-status mono"></div>
   </form>

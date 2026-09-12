@@ -100,3 +100,15 @@ def test_budget_exhaustion_escalates(client):
     inc = ctl.run("s2", "alt-2001")
     assert inc.status == "escalated" and client.truth()["tickets"]
     assert not client.truth()["blocked_ips"]
+
+
+def test_pivot_survives_approval_pause(client):
+    """S2: block -> pivot detected -> isolation waits for approval -> after approval the pivot is still investigated."""
+    client.load_scenario("s2")
+    store = IncidentStore(":memory:")
+    ctl = Controller(client, MockLLM(), store=store, budget=24, approver=lambda inc, dec: None)
+    inc = ctl.run("s2", "alt-2001")
+    assert inc.status == "awaiting_approval" and inc.followup_alerts == ["alt-2002"]
+    inc = ctl.approve(inc, True)
+    assert inc.status == "closed"
+    assert client.truth()["blocked_ips"] == ["198.51.100.23", "203.0.113.66"]

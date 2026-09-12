@@ -42,6 +42,7 @@ class HistoryItem:
     error: str | None = None
     rationale: str = ""
     text: str = ""         # for observations
+    signature: str = ""    # Gemini thought signature to echo back when replaying this call
 
 
 @dataclass

@@ -24,7 +24,8 @@ from sse_starlette.sse import EventSourceResponse
 from agent.chat import HELP, answer_question, parse_command
 from agent.config import settings
 from agent.controller import Controller
-from agent.llm import make_llm
+from agent.llm import PROVIDERS, has_key, make_llm
+from agent.llm_openai import GROQ_BASE, list_models, resolve_model
 from agent.state import Incident, IncidentStore, TraceEvent
 from agent.tools import SandboxClient, ToolError
 
@@ -37,7 +38,7 @@ class Session:
     def __init__(self) -> None:
         self.client = SandboxClient()
         self.store = IncidentStore(settings.incident_db)
-        self.provider = settings.llm_provider if (settings.llm_provider != "gemini" or settings.gemini_api_key) else "mock"
+        self.provider = settings.llm_provider if has_key(settings.llm_provider) else "mock"
         self.incidents: dict[str, Incident] = {}
         self.controllers: dict[str, Controller] = {}
         self.subscribers: dict[str, list[queue.Queue]] = {}
@@ -123,10 +124,19 @@ def index() -> FileResponse:
     return FileResponse(STATIC / "index.html")
 
 
+def _model_for(provider: str) -> str:
+    if provider == "gemini":
+        return settings.gemini_model
+    if provider == "groq":
+        return resolve_model(GROQ_BASE, settings.groq_api_key, settings.groq_model) if settings.groq_api_key else settings.groq_model
+    return "scripted"
+
+
 def _meta() -> dict[str, Any]:
-    key = settings.gemini_api_key
-    return {"planner": session.provider, "model": settings.gemini_model if session.provider == "gemini" else "scripted",
-            "gemini_model": settings.gemini_model, "has_key": bool(key), "key_hint": f"...{key[-4:]}" if key else "",
+    keys = {"gemini": settings.gemini_api_key, "groq": settings.groq_api_key}
+    return {"planner": session.provider, "model": _model_for(session.provider),
+            "providers": {p: {"has_key": bool(keys[p]), "key_hint": f"...{keys[p][-4:]}" if keys[p] else "",
+                              "model": _model_for(p) if keys[p] else ""} for p in ("gemini", "groq")},
             "sandbox": settings.sandbox_url or "in-process", "budget": settings.step_budget}
 
 
@@ -138,38 +148,125 @@ def meta() -> dict[str, Any]:
 class KeyReq(BaseModel):
     api_key: str
     model: str | None = None
+    remember: bool = False
+    provider: str = "gemini"
+
+
+def _write_env(provider: str, key: str, model: str) -> None:
+    """Persist to .env (gitignored) when the analyst asks for it explicitly."""
+    env = Path(".env")
+    lines = env.read_text(encoding="utf-8").splitlines() if env.exists() else []
+    out, seen = [], set()
+    pfx = provider.upper()
+    values = {f"{pfx}_API_KEY": key, f"{pfx}_MODEL": model, "LLM_PROVIDER": provider}
+    for ln in lines:
+        k = ln.split("=", 1)[0].strip()
+        if k in values:
+            seen.add(k)
+            out.append(f"{k}={values[k]}")
+        else:
+            out.append(ln)
+    for k, v in values.items():
+        if k not in seen:
+            out.append(f"{k}={v}")
+    env.write_text("\n".join(out) + "\n", encoding="utf-8")
+
+
+GEMINI = "https://generativelanguage.googleapis.com/v1beta"
+
+
+def _probe(key: str, model: str, provider: str = "gemini") -> None:
+    """One-token generation: proves the key AND the model actually work together."""
+    try:
+        if provider == "groq":
+            r = httpx.post(f"{GROQ_BASE}/chat/completions", headers={"Authorization": f"Bearer {key}"},
+                           json={"model": model, "messages": [{"role": "user", "content": "ping"}], "max_tokens": 1}, timeout=20.0)
+        else:
+            r = httpx.post(f"{GEMINI}/models/{model}:generateContent", headers={"x-goog-api-key": key},
+                           json={"contents": [{"role": "user", "parts": [{"text": "ping"}]}], "generationConfig": {"maxOutputTokens": 1}},
+                           timeout=20.0)
+    except httpx.HTTPError as e:
+        raise HTTPException(502, f"could not reach {provider}: {e.__class__.__name__}")
+    if r.status_code == 200:
+        return
+    try:
+        msg = r.json()["error"]["message"]
+    except Exception:
+        msg = r.text[:200]
+    if r.status_code in (401, 403):
+        raise HTTPException(401, f"{provider} rejected the key: {msg}")
+    if r.status_code in (400, 404):
+        raise HTTPException(404, f"model '{model}' not usable with this key: {msg}")
+    raise HTTPException(502, f"{provider} returned HTTP {r.status_code}: {msg}")
+
+
+def _list_models(key: str) -> list[str]:
+    try:
+        r = httpx.get(f"{GEMINI}/models", headers={"x-goog-api-key": key}, params={"pageSize": 200}, timeout=15.0)
+        r.raise_for_status()
+    except httpx.HTTPError:
+        return []
+    out = []
+    for m in r.json().get("models", []):
+        if "generateContent" in m.get("supportedGenerationMethods", []):
+            out.append(m["name"].removeprefix("models/"))
+    return sorted(out)
 
 
 @app.post("/api/settings/key")
 def set_key(req: KeyReq) -> dict[str, Any]:
-    """Set the Gemini key for this server process only (memory, never written to disk or logs)."""
+    """Set a planner key for this server process (memory; .env only when asked). Never logged."""
+    provider = req.provider.lower()
+    if provider not in ("gemini", "groq"):
+        raise HTTPException(400, f"provider must be gemini or groq")
     key = req.api_key.strip()
-    model = (req.model or settings.gemini_model).strip()
     if not key:
         raise HTTPException(400, "empty key")
-    try:
-        r = httpx.get(f"https://generativelanguage.googleapis.com/v1beta/models/{model}",
-                      headers={"x-goog-api-key": key}, timeout=15.0)
-    except httpx.HTTPError as e:
-        raise HTTPException(502, f"could not reach Gemini: {e.__class__.__name__}")
-    if r.status_code == 200:
-        pass
-    elif r.status_code in (400, 401, 403):
-        raise HTTPException(401, "Gemini rejected the key")
-    elif r.status_code == 404:
-        raise HTTPException(404, f"key accepted but model '{model}' not found")
+    if provider == "groq":
+        model = resolve_model(GROQ_BASE, key, (req.model or "auto").strip())
     else:
-        raise HTTPException(502, f"Gemini returned HTTP {r.status_code}")
-    settings.gemini_api_key = key
-    settings.gemini_model = model
-    session.provider = "gemini"
-    session.controllers.clear()          # new incidents get a Gemini planner
+        model = (req.model or settings.gemini_model).strip()
+    _probe(key, model, provider)
+    if provider == "groq":
+        settings.groq_api_key, settings.groq_model = key, model
+    else:
+        settings.gemini_api_key, settings.gemini_model = key, model
+    session.provider = provider
+    session.controllers.clear()          # new incidents get the new planner
+    if req.remember:
+        _write_env(provider, key, model)
+    return {**_meta(), "remembered": req.remember}
+
+
+class ProviderReq(BaseModel):
+    provider: str
+
+
+@app.post("/api/settings/provider")
+def set_provider(req: ProviderReq) -> dict[str, Any]:
+    """Switch between planners whose keys are already loaded (or the scripted planner)."""
+    p = req.provider.lower()
+    if p not in PROVIDERS:
+        raise HTTPException(400, f"provider must be one of {PROVIDERS}")
+    if not has_key(p):
+        raise HTTPException(400, f"no key loaded for {p}")
+    session.provider = p
+    session.controllers.clear()
     return _meta()
+
+
+@app.get("/api/settings/models")
+def models(provider: str = "gemini") -> dict[str, Any]:
+    if provider == "groq":
+        return {"models": list_models(GROQ_BASE, settings.groq_api_key) if settings.groq_api_key else []}
+    if not settings.gemini_api_key:
+        return {"models": []}
+    return {"models": _list_models(settings.gemini_api_key)}
 
 
 @app.delete("/api/settings/key")
 def clear_key() -> dict[str, Any]:
-    settings.gemini_api_key = ""
+    """Drop to the scripted planner (keys stay loaded so you can switch back)."""
     session.provider = "mock"
     session.controllers.clear()
     return _meta()
@@ -274,7 +371,7 @@ def chat(incident_id: str, req: ChatReq) -> dict[str, Any]:
     log.append({"who": "analyst", "text": req.message})
     cmd = parse_command(req.message)
     if cmd is None:
-        reply = answer_question(inc, req.message)
+        reply = answer_question(inc, req.message, session.provider)
     else:
         kind, args = cmd
         if kind == "help":

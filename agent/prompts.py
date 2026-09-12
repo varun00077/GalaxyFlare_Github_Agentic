@@ -17,6 +17,9 @@ HOW TO INVESTIGATE
    FAILED needs a block/reject or a not-vulnerable version and no post_exploitation items.
 6. If a tool fails after retries, use the next best evidence source and say so; do not invent certainty.
 7. Conclude as soon as the evidence is sufficient; do not repeat searches that returned the same lines.
+   Sufficient for SUCCEEDED means: the vulnerability was checked with lookup_cves for the targeted service, and
+   the post-exploitation traces come from at least two independent sources when the playbook lists more than one
+   (e.g. outbound + process, or auth + process). One matching line is a lead, not a conclusion.
 
 ENVIRONMENT EVENTS
 Messages marked [ENVIRONMENT EVENT] arrive mid-investigation (new alert, advisory revised, analyst override,

@@ -42,13 +42,16 @@ critical asset or host isolation needs analyst approval.
 
 ## Quick start
 
-Requirements: Python 3.11+, a Gemini API key ([aistudio.google.com/apikey](https://aistudio.google.com/apikey)).
+Requirements: Python 3.11+, and a planner key: **Groq** ([console.groq.com/keys](https://console.groq.com/keys),
+recommended — fast and its free tier holds up under the agent's 8–17 calls per incident) or **Gemini**
+([aistudio.google.com/apikey](https://aistudio.google.com/apikey)). Both work through the same loop; switch with
+`LLM_PROVIDER` or the Key button in the console.
 
 ```bash
 git clone <this repo> socrates && cd socrates
 python -m venv .venv && . .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env                              # then put your key in GEMINI_API_KEY
+cp .env.example .env                              # then put your key in GROQ_API_KEY (or GEMINI_API_KEY)
 ```
 
 Run the headline scenario with the real planner (sandbox runs in-process, still over HTTP):
@@ -80,9 +83,11 @@ The **analyst chat** answers questions from the evidence ledger (via Gemini when
 commands: `/override <ip> [note]`, `/reopen <instruction>`, `/approve`, `/deny`, `/pivot`, `/outage`,
 `/kbupdate`, `/fwreject`, `/help`.
 
-No `.env`? Click **Key** in the top bar, paste a Gemini API key (and optionally a model), and hit
-*Validate & use*. The key is checked against Gemini, held in the server process's memory only, never
-written to disk or logs, and the planner switches from scripted to Gemini for the next investigation.
+No `.env`? Click **Key** in the top bar, pick Groq or Gemini, paste the key (model optional — Groq's `auto`
+picks the strongest tool-capable model your key can use), and hit *Validate & use*. The key is checked with a
+one-token generation, held in the server process's memory (or written to the gitignored `.env` if you tick
+*remember*), never logged. *Use this provider* switches between loaded planners; *Scripted planner* drops to
+the offline one — the stage fallback.
 
 Other commands:
 
@@ -90,7 +95,7 @@ Other commands:
 python -m agent.cli scenarios                      # list the six scenarios
 python -m agent.cli run --scenario s3              # tool outage + critical asset approval
 python -m eval --llm mock --runs 3                 # score all scenarios offline (seconds)
-python -m eval --llm gemini                        # score with the real planner
+python -m eval --llm groq                          # score with the real planner (or --llm gemini)
 python -m pytest                                   # 29 tests, no network
 ```
 
@@ -149,6 +154,7 @@ sandbox/          the simulated environment (FastAPI service)
 agent/            the agent
   controller.py   observe -> plan -> act -> verify -> adapt loop
   llm.py          Gemini planner (function calling) + scripted MockLLM
+  llm_openai.py   Groq / OpenAI-compatible planner (tool calling)
   tools.py        tool registry (Gemini schemas) + HTTP client
   evidence.py     deterministic evidence tagging
   rules.py        verdict gates + action policy
@@ -165,7 +171,8 @@ docs/             PRD, architecture
 
 - [x] Day 1–2: sandbox, scenarios, agent core, CLI, eval harness, tests
 - [x] Day 3: web UI — alert queue, live trace (SSE), verdict hero, chaos panel, chat + approvals
-- [ ] Day 4: hosted demo, architecture diagram export, Gemini planner soak-tested on all six scenarios
+- [x] Real planners verified end-to-end: Groq gpt-oss-120b (S2, S3), Gemini 3.6 Flash (S2; free tier rate-limits mid-run)
+- [ ] Day 4: hosted demo, architecture diagram export, real-planner eval on all six scenarios
 - [ ] Day 5: demo video, presentation brief, submission packaging
 
 ## Guardrails and limits
