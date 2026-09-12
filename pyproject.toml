@@ -20,4 +20,4 @@ testpaths = ["tests"]
 timeout = 120
 
 [tool.setuptools]
-packages = ["sandbox", "agent", "eval"]
+packages = ["sandbox", "agent", "eval", "web"]

@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SOCrates</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;700;800&family=Instrument+Serif:ital@1&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="grain" aria-hidden="true"></div>
+
+<header class="bar">
+  <div class="brand">
+    <span class="wordmark">SOC<em>rates</em></span>
+    <span class="brand-sub mono">GALAXY FLARE · PS9</span>
+  </div>
+  <div class="bar-mid">
+    <label for="scenario" class="eyebrow">scenario</label>
+    <select id="scenario" class="mono"></select>
+    <button id="load" class="btn">Load</button>
+  </div>
+  <div class="bar-right">
+    <span class="eyebrow">planner</span><span id="planner" class="mono val">—</span>
+    <span class="eyebrow">incident</span><span id="incident-id" class="mono val">none</span>
+    <span id="status-pill" class="pill idle">idle</span>
+  </div>
+</header>
+
+<main class="grid">
+  <aside class="col left">
+    <section class="panel">
+      <div class="tag">ALERT QUEUE <span id="alert-count">0</span></div>
+      <div id="alerts" class="alerts"></div>
+    </section>
+
+    <section class="panel">
+      <div class="tag">CHAOS PANEL</div>
+      <p class="panel-note">Inject a disruption while the agent is working. Every one of these is also scripted into a scenario.</p>
+      <div class="chaos">
+        <button class="chaos-btn" data-kind="pivot"><b>PIVOT</b><span>attacker returns from a new IP</span></button>
+        <button class="chaos-btn" data-kind="log_outage"><b>LOG OUTAGE</b><span>next 2 searches return 503</span></button>
+        <button class="chaos-btn" data-kind="override"><b>OVERRIDE</b><span>analyst: source is a pentest</span></button>
+        <button class="chaos-btn" data-kind="kb_update"><b>ADVISORY</b><span>a version becomes affected</span></button>
+        <button class="chaos-btn" data-kind="new_alert"><b>REPEAT</b><span>same source alerts again</span></button>
+        <button class="chaos-btn" data-kind="firewall_reject"><b>FW REJECT</b><span>firewall refuses the rule</span></button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="tag">ENVIRONMENT</div>
+      <dl class="env">
+        <dt>firewall</dt><dd id="env-rules">none</dd>
+        <dt>isolated</dt><dd id="env-isolated">none</dd>
+        <dt>allow-list</dt><dd id="env-allow">none</dd>
+        <dt>watch-list</dt><dd id="env-watch">none</dd>
+        <dt>tickets</dt><dd id="env-tickets">none</dd>
+        <dt>assessments</dt><dd id="env-assess">none</dd>
+      </dl>
+    </section>
+  </aside>
+
+  <section class="col center">
+    <div class="hero" id="hero">
+      <div class="hero-top">
+        <span class="eyebrow" id="hero-kicker">no incident</span>
+        <span class="eyebrow" id="hero-right"></span>
+      </div>
+      <div class="hero-verdict" id="hero-verdict">Pick an alert</div>
+      <p class="hero-summary" id="hero-summary">The agent decides whether the attack behind an alert actually succeeded, responds inside the sandbox only when the evidence and the guardrails allow it, verifies the effect, and changes its mind when the environment or an analyst gives it a reason to.</p>
+      <div class="stats">
+        <div class="stat"><span class="num" id="st-conf">—</span><span class="cap">confidence<br>after guardrails</span></div>
+        <div class="stat"><span class="num" id="st-steps">0</span><span class="cap">planner steps<br>of <span id="st-budget">24</span></span></div>
+        <div class="stat"><span class="num" id="st-evidence">0</span><span class="cap">evidence<br>items tagged</span></div>
+        <div class="stat"><span class="num" id="st-actions">0</span><span class="cap">actions<br>all verified</span></div>
+      </div>
+      <div class="hero-chips" id="hero-chips"></div>
+    </div>
+
+    <div id="approval" class="approval" hidden>
+      <div>
+        <div class="eyebrow">ANALYST APPROVAL REQUIRED</div>
+        <div id="approval-text" class="approval-text"></div>
+      </div>
+      <div class="approval-actions">
+        <button id="approve" class="btn primary">Approve</button>
+        <button id="deny" class="btn">Deny</button>
+      </div>
+    </div>
+
+    <div class="trace-head">
+      <div class="tag">LIVE TRACE</div>
+      <div class="legend mono">
+        <span class="k decision">decision</span><span class="k action">action</span><span class="k result">result</span>
+        <span class="k guardrail">guardrail</span><span class="k verification">verify</span><span class="k adaptation">adapt</span>
+        <span class="k human">human</span><span class="k escalation">escalate</span>
+      </div>
+    </div>
+    <ol id="trace" class="trace"><li class="empty">The trace appears here: goal → decision → action → result → adaptation → final.</li></ol>
+  </section>
+
+  <aside class="col right">
+    <section class="panel grow">
+      <div class="tag">EVIDENCE LEDGER <span id="evidence-count">0</span></div>
+      <ol id="evidence" class="evidence"><li class="empty">Every verdict must cite lines from here.</li></ol>
+    </section>
+    <section class="panel chat">
+      <div class="tag">ANALYST</div>
+      <div id="chat-log" class="chat-log"></div>
+      <form id="chat-form" class="chat-form" autocomplete="off">
+        <input id="chat-input" type="text" placeholder="why did you block this?   /override 203.0.113.9 pentest   /help" disabled>
+        <button class="btn primary" type="submit" disabled id="chat-send">Send</button>
+      </form>
+    </section>
+  </aside>
+</main>
+<script src="/static/app.js"></script>
+</body>
+</html>

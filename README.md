@@ -66,6 +66,20 @@ python -m agent.cli run --scenario s2 --llm mock --auto-approve
 
 Drop `--auto-approve` to be prompted when the agent wants to isolate a host or touch a critical asset.
 
+### Analyst console (web UI)
+
+```bash
+python -m uvicorn web.app:app --port 8000        # then open http://localhost:8000
+```
+
+Alert queue → **Run** starts an investigation; the trace streams live (SSE). The hero shows the verdict,
+confidence after guardrails, steps, evidence and actions. The **chaos panel** injects a pivot, a log
+outage, an analyst override, a revised advisory, a repeat alert, or a firewall rejection while the agent
+works. High-impact actions (host isolation, anything on a critical asset) pause for **Approve / Deny**.
+The **analyst chat** answers questions from the evidence ledger (via Gemini when a key is set) and takes
+commands: `/override <ip> [note]`, `/reopen <instruction>`, `/approve`, `/deny`, `/pivot`, `/outage`,
+`/kbupdate`, `/fwreject`, `/help`.
+
 Other commands:
 
 ```bash
@@ -73,7 +87,7 @@ python -m agent.cli scenarios                      # list the six scenarios
 python -m agent.cli run --scenario s3              # tool outage + critical asset approval
 python -m eval --llm mock --runs 3                 # score all scenarios offline (seconds)
 python -m eval --llm gemini                        # score with the real planner
-python -m pytest                                   # 24 tests, no network
+python -m pytest                                   # 29 tests, no network
 ```
 
 Run the sandbox as its own service (the agent then talks to it over the network, as in the architecture):
@@ -83,7 +97,7 @@ uvicorn sandbox.app:app --port 8001                # OpenAPI docs at http://loca
 python -m agent.cli run --scenario s2 --sandbox-url http://localhost:8001
 ```
 
-Docker: `docker compose up` starts the sandbox on port 8001.
+Docker: `docker compose up` starts the sandbox (8001) and the console (8000).
 
 ## The six scenarios
 
@@ -108,7 +122,7 @@ adaptation_success: 1.0   escalation_precision: 1.0   mean_steps: 11
 
 ## Chaos panel (fault injection)
 
-The sandbox exposes one-click disruptions, used by the scenarios and (soon) the UI:
+The sandbox exposes one-click disruptions, used by the scenarios and the console's chaos panel:
 
 ```
 POST /chaos/pivot            attacker returns from a new IP
@@ -137,6 +151,7 @@ agent/            the agent
   verifier.py     post-action verification
   state.py        incident state, trace, SQLite persistence
   cli.py          command line runner
+web/              agent service + analyst console (FastAPI, SSE, vanilla JS)
 eval/             evaluation harness
 tests/            pytest suite
 docs/             PRD, architecture
@@ -145,8 +160,8 @@ docs/             PRD, architecture
 ## Status / roadmap
 
 - [x] Day 1–2: sandbox, scenarios, agent core, CLI, eval harness, tests
-- [ ] Day 3: web UI — alert queue, live trace (SSE), incident report, chaos panel, chat + approvals
-- [ ] Day 4: Docker for the full stack, hosted demo, architecture diagram export
+- [x] Day 3: web UI — alert queue, live trace (SSE), verdict hero, chaos panel, chat + approvals
+- [ ] Day 4: hosted demo, architecture diagram export, Gemini planner soak-tested on all six scenarios
 - [ ] Day 5: demo video, presentation brief, submission packaging
 
 ## Guardrails and limits
