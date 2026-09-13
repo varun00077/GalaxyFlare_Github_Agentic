@@ -22,7 +22,37 @@ in the same sentence. Keep it that way when you ad-lib. A cheat-sheet is at the 
 
 ---
 
-## Cut S — 2:30, conversational (recommended narration)
+## Cut T — 2:00 version
+
+`…` = half a second, `(beat)` = one second. ~300 words. No live-host tag, no chat demo; let a purple "Planner switched to…" line pass without comment.
+
+**0:00 · Hook — idle console**
+> Hi. … Did you know a company's network alarms go off *thousands* of times a day? (beat) And every alarm only says "someone tried" … not whether they got in. … A human analyst spends up to forty-five minutes per alarm working that out. … SOCrates does it for them.
+
+**0:15 · Goal — click Run on the Log4Shell alert**
+> One alarm: someone's attacking a server called app02 through a known bug. … One job for the agent: was this a real break-in? If so, respond safely — and prove the response worked.
+
+**0:27 · Investigating — trace runs, ledger fills**
+> No script here. Each step it looks at what it just learned … and decides what to check next. (beat) The request got in — "200 OK". The server runs the buggy version — confirmed against a vulnerability database. … The playbook says a real break-in leaves two fingerprints: the server calling *out* to the attacker, and a command shell being launched. … It searches the logs for exactly those — and finds both. Every clue, filed as numbered evidence on the right.
+
+**0:52 · Verdict + safety rules + block**
+> Verdict: succeeded. Ninety-five percent. (beat) But before it acts, safety rules — plain code, *not* AI — check it: real break-in evidence? Yes. Confident, and the address isn't trusted? Yes. … Only now does it block the attacker in the firewall.
+
+**1:05 · Verify → pivot → approve**
+> Then it checks its own work. Block in place? Yes. But — (beat) a new alarm. Same server, *different* address. The attacker switched machines … and the agent catches it and reopens the case on its own. … It also wants to cut the server off the network — big call — so it stops and asks a human. … That's me. Approve.
+
+**1:25 · Final**
+> New address blocked, verified, case closed. Every action double-checked, every claim tied to evidence.
+
+**1:33 · Failure — scenario s3**
+> Now let's break something. (beat) Password-guessing on a critical server — and halfway through, the log service dies. … Three tries, fails — and it *says* so. Lowers its confidence, keeps going with what it can reach, never guesses. (beat) When the logs come back: one password accepted. Because the server's critical, the block waits for a human — and it files a ticket: reset that account.
+
+**1:52 · Close — end card**
+> Safety rules outside the AI. Self-checks after every action. A human on the big calls. … Team Galaxy Flare — SOCrates.
+
+---
+
+## Cut S — 2:30, conversational
 
 Read at a relaxed pace. `…` = half a second, `(beat)` = a full second. Let each trace line land on screen before you name it.
 
