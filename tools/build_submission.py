@@ -10,6 +10,7 @@ Produces <out>/ (default: ../GalaxyFlare_Submission_Agentic next to the repo):
   03_Source/GITHUB_LINK.txt
   04_Video/                                       script + drop the recorded GalaxyFlare_Video_Agentic.mp4 here
   05_Deployed/GalaxyFlare_Deployed_Agentic.pdf    hosted URL + how to run locally
+  06_Presentation/GalaxyFlare_Presentation_Agentic.pdf  10-slide presentation summary (landscape)
 Then scans every text file in the folder (and the zip) for credential patterns.
 """
 from __future__ import annotations
@@ -282,6 +283,143 @@ def deployed(path: Path, vercel_url: str) -> None:
     _pdf(path, story)
 
 
+
+def presentation(path: Path, png: Path, vercel_url: str) -> None:
+    """Landscape slide deck: the presentation summary."""
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.units import cm
+    from reportlab.platypus import Image, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+    ink, accent, muted = colors.HexColor("#1b1b1f"), colors.HexColor("#b58900"), colors.HexColor("#5c6270")
+    ss = _styles()
+    T = ParagraphStyle("T", parent=ss["Heading1"], fontSize=30, leading=36, textColor=ink, spaceAfter=4)
+    Sub = ParagraphStyle("Sub", parent=ss["BodyText"], fontSize=13, leading=17, textColor=muted, spaceAfter=10)
+    H = ParagraphStyle("H", parent=ss["Heading1"], fontSize=22, leading=26, textColor=ink, spaceAfter=8)
+    B = ParagraphStyle("B", parent=ss["BodyText"], fontSize=12.5, leading=17.5, leftIndent=14, bulletIndent=2, spaceAfter=3)
+    Body = ParagraphStyle("Bd", parent=ss["BodyText"], fontSize=12.5, leading=17.5, spaceAfter=6)
+    Mono = ParagraphStyle("M", parent=ss["Code"], fontSize=8.6, leading=11)
+    Foot = ParagraphStyle("F", parent=ss["BodyText"], fontSize=8, textColor=muted)
+
+    def bullets(items):
+        return [Paragraph(i, B, bulletText="•") for i in items]
+
+    def footer(canvas, doc):
+        canvas.saveState()
+        canvas.setFillColor(accent); canvas.rect(0, doc.pagesize[1] - 0.35 * cm, doc.pagesize[0], 0.35 * cm, stroke=0, fill=1)
+        canvas.setFillColor(muted); canvas.setFont("Helvetica", 8)
+        canvas.drawString(1.5 * cm, 0.7 * cm, f"SOCrates · Team {TEAM} · Agentic AI Hackathon, Tech Zephyr 4.0 · PS9")
+        canvas.drawRightString(doc.pagesize[0] - 1.5 * cm, 0.7 * cm, f"{doc.page}")
+        canvas.restoreState()
+
+    def table(data, widths):
+        rows = [[Paragraph(str(c), ParagraphStyle("c", parent=ss["Small"], fontSize=10, leading=13)) for c in r] for r in data]
+        t = Table(rows, colWidths=widths, repeatRows=1)
+        t.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cccccc")), ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#efefec")),
+                               ("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 5), ("RIGHTPADDING", (0, 0), (-1, -1), 5)]))
+        return t
+
+    img = Image(str(png)); r = img.imageHeight / img.imageWidth
+    img.drawWidth = 24.5 * cm; img.drawHeight = 24.5 * cm * r
+
+    S = []
+    # 1 title
+    S += [Spacer(1, 3.2 * cm), Paragraph("SOCrates", T),
+          Paragraph("An autonomous SOC agent that decides whether a cyber-attack actually landed — then responds, verifies, and adapts.", Sub),
+          Spacer(1, 1 * cm),
+          Paragraph(f"Team {TEAM} · Track 5 Cybersecurity · Problem Statement 9: Autonomous SOC Investigation &amp; Response Agent", Body),
+          Paragraph(f"Repository: {REPO_URL} · Hosted demo: {vercel_url}", Foot), PageBreak()]
+    # 2 problem
+    S += [Paragraph("The problem", H)] + bullets([
+        "A NIDS alert proves an <b>attempt</b>, never an outcome. Thousands fire per day.",
+        "Finding out whether the attack worked is manual: flow record → asset &amp; version → advisories → host logs. <b>15–45 minutes per alert.</b>",
+        "Two failure modes: real compromises wait in the queue, and analysts block on the alert label — cutting legitimate traffic and authorised tests.",
+        "Existing SOAR tools run fixed playbooks; they cannot decide what evidence is needed next, and they do not check their own work."]) + [PageBreak()]
+    # 3 solution
+    S += [Paragraph("The solution", H)] + bullets([
+        "One agent per alert with one goal: <b>did it succeed? respond safely; verify the response.</b>",
+        "An LLM planner chooses the next tool from the evidence so far — flow, asset inventory, CVE knowledge base, response playbooks, host logs.",
+        "Every result is tagged into a numbered <b>evidence ledger</b>; the verdict must cite it: SUCCEEDED / FAILED / INCONCLUSIVE.",
+        "Deterministic <b>guardrails outside the LLM</b> decide what is safe: block only with evidence, confidence ≥ 0.7 and a non-allow-listed source; approvals for host isolation and critical assets.",
+        "A <b>verifier</b> re-queries the environment after every action; a failed check or a new correlated alert reopens the case.",
+        "Analysts can approve, override (the agent unblocks and revises), ask why, or steer via chat."]) + [PageBreak()]
+    # 4 architecture
+    S += [Paragraph("Architecture", H), img,
+          Paragraph("LLM plans and proposes · rules decide what is safe · verifier checks the world · human overrides win", Foot), PageBreak()]
+    # 5 workflow
+    S += [Paragraph("Workflow for one alert", H),
+          table([["Step", "What happens", "Module"],
+                 ["1 Observe", "Drain environment events (new alert, override, advisory revised); a knowledge change re-opens lookups", "agent/controller.py"],
+                 ["2 Plan", "LLM returns exactly one tool call or a conclusion, from the full history + ledger (compacted)", "agent/llm.py · agent/llm_openai.py"],
+                 ["3 Act", "Tool over HTTP with retries, provider retry hints, model rotation on rate limits", "agent/tools.py"],
+                 ["4 Tag", "CVE success indicators, generic post-exploitation and block signatures → E1, E2, …", "agent/evidence.py"],
+                 ["5 Gate", "Verdict checked against the ledger (can only be downgraded); response turned into gated actions", "agent/rules.py"],
+                 ["6 Verify", "Rule present? flows since? new alerts on the host? → re-enter the loop if not clean", "agent/verifier.py"],
+                 ["7 Persist", "State + trace saved every step (SQLite locally, browser-held state on Vercel)", "agent/state.py"]],
+                [3 * cm, 15.5 * cm, 6 * cm]), PageBreak()]
+    # 6 trace
+    S += [Paragraph("What a run looks like — scenario s2, Log4Shell with an attacker pivot", H),
+          Paragraph("\n".join([
+              "[ 1] DECISION     get_alert(alert_id=alt-2001)",
+              "[ 2] DECISION     get_flow(flow_id=881256001)                      -> HTTP 200: payload accepted",
+              "[ 3] DECISION     get_asset(key=10.20.0.22)                        -> app02 (high): log4j-core 2.14.1",
+              "[ 4] DECISION     lookup_cves(product=log4j-core, version=2.14.1)   -> VULNERABLE CVE-2021-44228  [E4]",
+              "[ 5] DECISION     search_playbooks(query=log4j jndi exploit)        -> Log4Shell playbook: outbound, process, app",
+              "[ 6] DECISION     search_logs(host=app02, source=outbound, ...)     -> LDAP callback to attacker  [E5, E6]",
+              "[ 7] DECISION     Planner concludes SUCCEEDED (0.95), proposes block_ip_and_isolate_host",
+              "[ 7] GUARDRAIL    Verdict check passed: post-exploitation evidence present, asset vulnerable",
+              "[ 7] ACTION       Blocked 203.0.113.66 (rule fw-0001)",
+              "[ 7] VERIFY       rule effective, but 1 new alert on the same host from 198.51.100.23: alt-2002",
+              "[ 7] ADAPT        Attacker pivot suspected: investigating alt-2002",
+              "[ 7] GUARDRAIL    Approval required: isolate_host app02   ->  HUMAN approved  ->  ACTION isolated, VERIFY ok",
+              "[ 8] DECISION     get_alert(alert_id=alt-2002) ... search_logs(pattern=198.51.100.23)",
+              "[11] ACTION       Blocked 198.51.100.23 (rule fw-0002)   VERIFY: no flows since, no new alerts",
+              "[11] FINAL        SUCCEEDED (0.95) - blocked: 203.0.113.66, 198.51.100.23; host isolated",
+          ]).replace("\n", "<br/>"), Mono),
+          Spacer(1, 6), Paragraph("Real Groq run (gpt-oss-120b): 11 planner calls, ~25k tokens, both blocks verified, one approval.", Body), PageBreak()]
+    # 7 adaptation & failure
+    S += [Paragraph("Adaptation and failure handling", H),
+          table([["Condition", "What the agent does"],
+                 ["Attacker returns from a new IP after the block (s2)", "Verifier surfaces the alert → pivot investigated → second block; host isolation with approval"],
+                 ["Log service returns 503 mid-investigation (s3)", "3 retries → continue with other sources, confidence capped → resume when logs return; critical-asset approval; credential-reset ticket"],
+                 ["Target not in inventory (s4)", "INCONCLUSIVE, escalate with the missing evidence named; no block on the label"],
+                 ["Analyst: the source is an authorised pentest (s5)", "Unblock, release host, exception recorded, assessment revised to OVERRIDDEN"],
+                 ["Advisory revised after a FAILED verdict (s6)", "Incident reopened, vulnerability re-checked, verdict flips to SUCCEEDED, block"],
+                 ["Planner rate-limited / request too large", "Rotate across models, honor retry-after, compact context — every wait visible in the trace"],
+                 ["Planner loops or fails twice", "Loop guard refuses repeats; rule-only conclusion from the ledger; step budget escalates instead of guessing"]],
+                [9 * cm, 15.5 * cm]), PageBreak()]
+    # 8 results
+    S += [Paragraph("Results", H)] + bullets([
+        "Six scenarios double as demo script and eval suite. Offline eval: <b>verdict accuracy 1.0, unsafe actions 0, all actions verified, adaptation 1.0</b>.",
+        "Real planner (Groq gpt-oss-120b): <b>6/6 verdicts correct, 0 unsafe actions</b>, 7–11 planner calls and 15–28k tokens per incident.",
+        "Every block re-verified against the environment; every verdict cites evidence ids; every guardrail decision is a line in the trace.",
+        "<b>Live host mode</b>: the same agent on the machine it runs on — Windows event logs, live connections, installed software, NVD advisories, IP reputation. It investigated a genuine Windows Defender detection in 7 steps and correctly concluded FAILED (quarantined before execution).",
+        "34 automated tests, no network required."]) + [PageBreak()]
+    # 9 safety
+    S += [Paragraph("Safety, limits, and the path to production", H)] + bullets([
+        "All response actions target a simulated environment; in live mode firewall changes are dry-run unless elevated with LIVE_ACTIONS=1, private addresses are refused, local host isolation is never allowed.",
+        "The LLM never touches the firewall directly: it proposes; the policy in <b>agent/rules.py</b> is the only path to an action.",
+        "Free-tier LLM rate limits are the main operational constraint; the agent survives them, a paid tier makes it fast.",
+        "Production swap: the nine tool signatures map to SIEM search, EDR, CMDB, NVD, firewall/SOAR APIs and ticketing; the loop, gates, verifier and approvals stay as they are.",
+        "No credentials in the repository: keys come from environment variables or a browser-held key sent per request."]) + [PageBreak()]
+    # 10 deliverables
+    S += [Paragraph("Deliverables", H),
+          table([["Artifact", "Name"],
+                 ["Source code", f"GalaxyFlare_Github_Agentic — {REPO_URL}"],
+                 ["Deployed version", f"{vercel_url} (stateless mode) · local: python -m uvicorn web.app:app"],
+                 ["Demo video", "GalaxyFlare_Video_Agentic.mp4 (3–5 min)"],
+                 ["Problem &amp; solution brief", "GalaxyFlare_Brief_Agentic.pdf"],
+                 ["Architecture", "GalaxyFlare_Architecture_Agentic.pdf"],
+                 ["Presentation", "GalaxyFlare_Presentation_Agentic.pdf (this deck)"]],
+                [6 * cm, 18.5 * cm]),
+          Spacer(1, 1 * cm), Paragraph(f"Team {TEAM} — thank you.", Sub)]
+
+    doc = SimpleDocTemplate(str(path), pagesize=landscape(A4), leftMargin=2 * cm, rightMargin=2 * cm, topMargin=1.6 * cm, bottomMargin=1.4 * cm,
+                            title=path.stem, author=f"Team {TEAM}")
+    doc.build(S, onFirstPage=footer, onLaterPages=footer)
+
+
 # ---------------------------------------------------------------- packaging
 def git_archive(zip_path: Path) -> None:
     subprocess.run(["git", "archive", "--format=zip", "-o", str(zip_path), "--prefix=GalaxyFlare_Github_Agentic/", "HEAD"], cwd=ROOT, check=True)
@@ -320,7 +458,7 @@ def main() -> int:
     out = Path(a.out)
     if out.exists():
         shutil.rmtree(out)
-    for d in ("01_Brief", "02_Architecture", "03_Source", "04_Video", "05_Deployed"):
+    for d in ("01_Brief", "02_Architecture", "03_Source", "04_Video", "05_Deployed", "06_Presentation"):
         (out / d).mkdir(parents=True)
 
     png = out / "02_Architecture" / "GalaxyFlare_Architecture_Agentic.png"
@@ -335,13 +473,15 @@ def main() -> int:
         "Record Cut A from VIDEO_SCRIPT.md (about 4:15 - the rules require 3 to 5 minutes; the 2:00 and 2:30 cuts are too short).\n"
         "Save the file here as: GalaxyFlare_Video_Agentic.mp4\n", encoding="utf-8")
     deployed(out / "05_Deployed" / "GalaxyFlare_Deployed_Agentic.pdf", a.vercel_url)
+    presentation(out / "06_Presentation" / "GalaxyFlare_Presentation_Agentic.pdf", png, a.vercel_url)
     (out / "00_README.txt").write_text(
         f"Team {TEAM} - SOCrates - Autonomous SOC Investigation & Response Agent (Track 5, PS9)\n\n"
         "01_Brief/         GalaxyFlare_Brief_Agentic.pdf           Problem & Solution Brief\n"
         "02_Architecture/  GalaxyFlare_Architecture_Agentic.pdf    System architecture & workflow (+ diagram PNG, ARCHITECTURE.md)\n"
         "03_Source/        GalaxyFlare_Github_Agentic.zip          Source code (git archive) + GITHUB_LINK.txt\n"
         "04_Video/         GalaxyFlare_Video_Agentic.mp4           3-5 minute demo video (+ script)\n"
-        "05_Deployed/      GalaxyFlare_Deployed_Agentic.pdf        Hosted URL and how to run locally\n\n"
+        "05_Deployed/      GalaxyFlare_Deployed_Agentic.pdf        Hosted URL and how to run locally\n"
+        "06_Presentation/  GalaxyFlare_Presentation_Agentic.pdf    Presentation summary (10 slides)\n\n"
         f"Repository: {REPO_URL}\nDeployed:   {a.vercel_url}\n\n"
         "No API keys, passwords or tokens are included anywhere in this folder.\n", encoding="utf-8")
 

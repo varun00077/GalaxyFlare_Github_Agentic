@@ -226,6 +226,10 @@ class GeminiLLM(BaseLLM):
 class MockLLM(BaseLLM):
     """Deterministic planner. Mirrors what a good analyst does with the playbooks; no network."""
     name = "mock"
+    model = "scripted"
+
+    def __init__(self) -> None:
+        self.usage: dict[str, int] = {"prompt": 0, "output": 0, "calls": 0}
 
     def _done(self, inc: Incident, name: str, since: int = 0, **match: Any) -> bool:
         for h in inc.calls(name):
@@ -246,6 +250,7 @@ class MockLLM(BaseLLM):
         return None
 
     def decide(self, inc: Incident) -> Decision:
+        self.usage["calls"] += 1          # scripted decisions are free, but the step count is still real
         cur = inc.current_alert_id
         since = inc.epoch_step
         # Only knowledge-dependent calls go stale when the KB changes (epoch bump); the rest stay done.

@@ -62,7 +62,7 @@ class Session:
             "blocked_ips": inc.blocked_ips, "pending_approval": inc.pending_approval, "logs_degraded": inc.logs_degraded,
             "evidence": [asdict(e) for e in inc.evidence], "actions": inc.actions, "escalations": inc.escalations,
             "followup_alerts": inc.followup_alerts, "overrides": inc.overrides, "running": inc.id in self.running,
-            "llm_usage": dict(getattr(self.controllers.get(inc.id), "llm", None) and self.controllers[inc.id].llm.usage or {}),
+            "llm_usage": dict(getattr(getattr(self.controllers.get(inc.id), "llm", None), "usage", {}) or {}),
             "llm_model": getattr(getattr(self.controllers.get(inc.id), "llm", None), "model", "") or self.provider,
         }
 
